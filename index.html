@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nano Banana for Photoshop - AI 이미지 생성의 혁명</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --primary: #ffd700;
+        --secondary: #ffa500;
+        --dark: #1a1a1a;
+        --light: #f8f8f8;
+        --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --text: #333;
+        --border: #e5e5e5;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+          Oxygen, Ubuntu, sans-serif;
+        line-height: 1.6;
+        color: var(--text);
+        overflow-x: hidden;
+      }
+
+      /* 헤더 */
+      .hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 120px 20px;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::before {
+        content: '🍌';
+        position: absolute;
+        font-size: 300px;
+        opacity: 0.1;
+        top: -50px;
+        right: -50px;
+        transform: rotate(-15deg);
+      }
+
+      .hero h1 {
+        font-size: 3.5em;
+        margin-bottom: 20px;
+        font-weight: 700;
+        animation: fadeInUp 1s ease;
+      }
+
+      .hero .subtitle {
+        font-size: 1.5em;
+        opacity: 0.95;
+        margin-bottom: 40px;
+        animation: fadeInUp 1s ease 0.2s both;
+      }
+
+      .hero .version-badge {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 20px;
+        border-radius: 50px;
+        margin-bottom: 30px;
+        animation: fadeInUp 1s ease 0.4s both;
+      }
+
+      .cta-buttons {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        flex-wrap: wrap;
+        animation: fadeInUp 1s ease 0.6s both;
+      }
+
+      .btn {
+        padding: 15px 40px;
+        border-radius: 50px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        display: inline-block;
+        cursor: pointer;
+        border: none;
+        font-size: 1.1em;
+      }
+
+      .btn-primary {
+        background: white;
+        color: #667eea;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: white;
+        border: 2px solid white;
+      }
+
+      .btn-secondary:hover {
+        background: white;
+        color: #667eea;
+      }
+
+      /* 컨테이너 */
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+
+      /* 섹션 */
+      .section {
+        padding: 80px 20px;
+      }
+
+      .section:nth-child(even) {
+        background: var(--light);
+      }
+
+      .section-title {
+        font-size: 2.5em;
+        text-align: center;
+        margin-bottom: 20px;
+        color: var(--dark);
+      }
+
+      .section-subtitle {
+        text-align: center;
+        color: #666;
+        margin-bottom: 60px;
+        font-size: 1.2em;
+      }
+
+      /* 기능 카드 */
+      .features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 30px;
+        margin-bottom: 60px;
+      }
+
+      .feature-card {
+        background: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+      }
+
+      .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      }
+
+      .feature-icon {
+        font-size: 3em;
+        margin-bottom: 20px;
+      }
+
+      .feature-card h3 {
+        margin-bottom: 15px;
+        color: var(--dark);
+        font-size: 1.4em;
+      }
+
+      .feature-card p {
+        color: #666;
+        line-height: 1.7;
+      }
+
+      /* 프리셋 쇼케이스 */
+      .preset-showcase {
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        margin-bottom: 40px;
+      }
+
+      .preset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+        margin-top: 30px;
+      }
+
+      .preset-item {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 0.9em;
+      }
+
+      .preset-item:hover {
+        transform: scale(1.05);
+      }
+
+      .preset-count {
+        display: inline-block;
+        background: #667eea;
+        color: white;
+        padding: 5px 15px;
+        border-radius: 20px;
+        margin-left: 10px;
+      }
+
+      /* 설치 가이드 */
+      .installation-steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 30px;
+        margin-top: 40px;
+      }
+
+      .step {
+        text-align: center;
+      }
+
+      .step-number {
+        display: inline-block;
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 50%;
+        line-height: 50px;
+        font-size: 1.5em;
+        font-weight: bold;
+        margin-bottom: 20px;
+      }
+
+      .step h3 {
+        margin-bottom: 10px;
+        color: var(--dark);
+      }
+
+      /* 코드 블록 */
+      .code-block {
+        background: #2d2d2d;
+        color: #f8f8f2;
+        padding: 20px;
+        border-radius: 10px;
+        overflow-x: auto;
+        margin: 20px 0;
+        font-family: 'Courier New', monospace;
+        position: relative;
+      }
+
+      .code-block::before {
+        content: attr(data-lang);
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #444;
+        padding: 3px 10px;
+        border-radius: 5px;
+        font-size: 0.8em;
+        text-transform: uppercase;
+      }
+
+      /* 탭 시스템 */
+      .tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid var(--border);
+      }
+
+      .tab {
+        padding: 10px 20px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1em;
+        color: #666;
+        transition: all 0.3s ease;
+        position: relative;
+      }
+
+      .tab.active {
+        color: #667eea;
+      }
+
+      .tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: #667eea;
+      }
+
+      .tab-content {
+        display: none;
+        animation: fadeIn 0.5s ease;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      /* 비교 표 */
+      .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 30px 0;
+        background: white;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+      }
+
+      .comparison-table th {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        text-align: left;
+      }
+
+      .comparison-table td {
+        padding: 15px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .comparison-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .check {
+        color: #4caf50;
+        font-size: 1.2em;
+      }
+
+      /* FAQ 아코디언 */
+      .faq-item {
+        background: white;
+        margin-bottom: 15px;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+      }
+
+      .faq-question {
+        padding: 20px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+        transition: background 0.3s ease;
+      }
+
+      .faq-question:hover {
+        background: var(--light);
+      }
+
+      .faq-answer {
+        padding: 0 20px;
+        max-height: 0;
+        overflow: hidden;
+        transition: all 0.3s ease;
+      }
+
+      .faq-item.active .faq-answer {
+        padding: 20px;
+        max-height: 500px;
+      }
+
+      .faq-icon {
+        transition: transform 0.3s ease;
+      }
+
+      .faq-item.active .faq-icon {
+        transform: rotate(180deg);
+      }
+
+      /* 푸터 */
+      footer {
+        background: var(--dark);
+        color: white;
+        padding: 40px 20px;
+        text-align: center;
+      }
+
+      footer a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+
+      /* 애니메이션 */
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(30px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      /* 반응형 */
+      @media (max-width: 768px) {
+        .hero h1 {
+          font-size: 2.5em;
+        }
+
+        .hero .subtitle {
+          font-size: 1.2em;
+        }
+
+        .section-title {
+          font-size: 2em;
+        }
+
+        .features {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* 배지 */
+      .badge {
+        display: inline-block;
+        padding: 3px 8px;
+        background: #4caf50;
+        color: white;
+        border-radius: 5px;
+        font-size: 0.8em;
+        margin-left: 10px;
+        vertical-align: middle;
+      }
+
+      .badge.new {
+        background: #ff5722;
+      }
+
+      .badge.beta {
+        background: #ffc107;
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 히어로 섹션 -->
+    <section class="hero">
+      <div class="container">
+        <div class="version-badge">Version 2.0 with Gemini API</div>
+        <h1>🍌 Nano Banana for Photoshop</h1>
+        <p class="subtitle">AI로 창의성의 한계를 넘어서다</p>
+        <div class="cta-buttons">
+          <a href="https://drive.google.com/drive/folders/1WyKX3MemrdCgFc5J9OHRN0M1xEmnUxaZ?usp=sharing" 
+             class="btn btn-primary"
+             target="_blank">지금 다운로드</a>
+          <a href="#features" class="btn btn-secondary">주요 기능 보기</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 주요 기능 섹션 -->
+    <section id="features" class="section">
+      <div class="container">
+        <h2 class="section-title">왜 Nano Banana인가?</h2>
+        <p class="section-subtitle">Photoshop과 AI의 완벽한 결합</p>
+
+        <div class="features">
+          <div class="feature-card">
+            <div class="feature-icon">🎨</div>
+            <h3>212개의 프리셋</h3>
+            <p>
+              변환, 합성, 스튜디오, 상업, 디자인 등 11개 카테고리의 전문
+              프리셋으로 즉시 시작하세요.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🚀</div>
+            <h3>빠른 프리셋 버튼</h3>
+            <p>
+              자주 사용하는 프리셋을 원클릭으로 실행. 개인별 맞춤 설정으로 작업
+              효율 극대화.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🔍</div>
+            <h3>스마트 검색</h3>
+            <p>
+              프리셋 제목, 설명, 프롬프트로 검색 가능. 카테고리 필터링으로
+              원하는 효과를 빠르게 찾기.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">💾</div>
+            <h3>사용자 프리셋 저장</h3>
+            <p>
+              나만의 프롬프트를 프리셋으로 저장하고 관리. 팀과 공유하여 일관된
+              스타일 유지.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">🖼️</div>
+            <h3>멀티 이미지 지원</h3>
+            <p>
+              여러 참조 이미지를 동시에 사용하여 복잡한 합성과 변환 작업 수행.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3>Gemini 2.5 Flash</h3>
+            <p>
+              Google의 최신 AI 모델로 빠르고 정확한 이미지 생성. 10-30초 내 결과
+              확인.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 프리셋 쇼케이스 -->
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">강력한 프리셋 시스템</h2>
+        <p class="section-subtitle">
+          212개의 전문 프리셋과 무제한 사용자 프리셋
+        </p>
+
+        <div class="preset-showcase">
+          <h3>카테고리별 프리셋 <span class="preset-count">212개</span></h3>
+          <div class="preset-grid">
+            <div class="preset-item">🎨 변환 (45개)</div>
+            <div class="preset-item">🔄 합성 (38개)</div>
+            <div class="preset-item">📸 스튜디오 (12개)</div>
+            <div class="preset-item">💼 상업 (15개)</div>
+            <div class="preset-item">✨ 디자인 (25개)</div>
+            <div class="preset-item">🏷️ 브랜딩 (8개)</div>
+            <div class="preset-item">📝 템플릿 (20개)</div>
+            <div class="preset-item">✂️ 편집 (35개)</div>
+            <div class="preset-item">➕ 생성 (10개)</div>
+            <div class="preset-item">📖 스토리텔링 (4개)</div>
+          </div>
+
+          <h3 style="margin-top: 40px">인기 프리셋 예시</h3>
+          <div class="features" style="margin-top: 20px">
+            <div class="feature-card">
+              <h4>🎭 피규어로 변환</h4>
+              <p>
+                사진을 3D 캐릭터 피규어로 변환. 박스 패키징과 블렌더 모델링
+                화면까지 연출.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h4>🌈 흑백 사진 컬러화</h4>
+              <p>
+                오래된 흑백 사진에 자연스러운 색상을 입혀 생생한 컬러 사진으로
+                복원.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h4>🏞️ 배경 변경</h4>
+              <p>인물은 그대로, 배경만 원하는 환경으로 자연스럽게 교체.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 설치 가이드 -->
+    <section id="download" class="section">
+      <div class="container">
+        <h2 class="section-title">간단한 설치 방법</h2>
+        <p class="section-subtitle">3분이면 설치 완료!</p>
+
+        <div class="installation-steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <h3>파일 다운로드</h3>
+            <p>Nano-Banana-Gemini.jsx와 preset.js 파일을 다운로드합니다.</p>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <h3>Scripts 폴더에 복사</h3>
+            <p>두 파일을 Photoshop Scripts 폴더에 함께 넣습니다.</p>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <h3>Photoshop 재시작</h3>
+            <p>File > Scripts 메뉴에서 Nano-Banana-Gemini를 실행합니다.</p>
+          </div>
+        </div>
+
+        <div class="tabs" style="margin-top: 60px">
+          <button class="tab active" onclick="showTab('mac')">macOS</button>
+          <button class="tab" onclick="showTab('windows')">Windows</button>
+        </div>
+
+        <div id="mac" class="tab-content active">
+          <h3>macOS 설치 경로</h3>
+          <div class="code-block" data-lang="bash">
+            # Photoshop 2025 /Applications/Adobe Photoshop 2025/Presets/Scripts/
+            # Photoshop 2024 /Applications/Adobe Photoshop 2024/Presets/Scripts/
+            # 터미널에서 복사 cp Nano-Banana-Gemini.jsx preset.js
+            "/Applications/Adobe Photoshop 2025/Presets/Scripts/"
+          </div>
+
+          <h4>Scripts 폴더 찾기 (Finder)</h4>
+          <ol style="line-height: 2">
+            <li>Finder 열기</li>
+            <li>메뉴바 > 이동 > 폴더로 이동... (⌘+⇧+G)</li>
+            <li>
+              경로 입력:
+              <code>/Applications/Adobe Photoshop 2025/Presets/Scripts/</code>
+            </li>
+            <li>두 파일을 드래그 앤 드롭</li>
+          </ol>
+        </div>
+
+        <div id="windows" class="tab-content">
+          <h3>Windows 설치 경로</h3>
+          <div class="code-block" data-lang="cmd">
+            # Photoshop 2025 C:\Program Files\Adobe\Adobe Photoshop
+            2025\Presets\Scripts\ # Photoshop 2024 C:\Program Files\Adobe\Adobe
+            Photoshop 2024\Presets\Scripts\ # 명령 프롬프트에서 복사 copy
+            Nano-Banana-Gemini.jsx preset.js "C:\Program Files\Adobe\Adobe
+            Photoshop 2025\Presets\Scripts\"
+          </div>
+
+          <h4>Scripts 폴더 찾기 (탐색기)</h4>
+          <ol style="line-height: 2">
+            <li>Windows 탐색기 열기</li>
+            <li>
+              주소창에 경로 입력:
+              <code
+                >C:\Program Files\Adobe\Adobe Photoshop
+                2025\Presets\Scripts\</code
+              >
+            </li>
+            <li>Enter 키 누르기</li>
+            <li>두 파일을 복사하여 붙여넣기</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- API 키 설정 -->
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">Google Gemini API 키 설정</h2>
+        <p class="section-subtitle">무료로 시작하는 AI 이미지 생성</p>
+
+        <div class="installation-steps">
+          <div class="step">
+            <div class="step-number">1</div>
+            <h3>AI Studio 접속</h3>
+            <p>
+              <a href="https://aistudio.google.com" target="_blank"
+                >aistudio.google.com</a
+              >
+              방문
+            </p>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <h3>API 키 생성</h3>
+            <p>"Get API key" → "Create API key" 클릭</p>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <h3>플러그인에 입력</h3>
+            <p>첫 실행 시 API 키 입력 창에 붙여넣기</p>
+          </div>
+        </div>
+
+        <div class="comparison-table" style="margin-top: 40px">
+          <table class="comparison-table">
+            <tr>
+              <th>기능</th>
+              <th>Nano Banana</th>
+              <th>일반 AI 도구</th>
+            </tr>
+            <tr>
+              <td>Photoshop 통합</td>
+              <td><span class="check">✓</span> 완벽 통합</td>
+              <td>별도 프로그램</td>
+            </tr>
+            <tr>
+              <td>레이어 마스크</td>
+              <td><span class="check">✓</span> 자동 생성</td>
+              <td>수동 작업</td>
+            </tr>
+            <tr>
+              <td>프리셋 시스템</td>
+              <td><span class="check">✓</span> 212개+사용자</td>
+              <td>제한적</td>
+            </tr>
+            <tr>
+              <td>멀티 이미지</td>
+              <td><span class="check">✓</span> 지원</td>
+              <td>단일 이미지</td>
+            </tr>
+            <tr>
+              <td>가격</td>
+              <td><span class="check">✓</span> 무료</td>
+              <td>월 구독료</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 새로운 기능 -->
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">
+          🎉 새로운 기능 <span class="badge new">NEW</span>
+        </h2>
+        <p class="section-subtitle">Version 2.0의 혁신적인 업데이트</p>
+
+        <div class="features">
+          <div class="feature-card">
+            <h3>🎯 빠른 프리셋 관리</h3>
+            <p>
+              자주 사용하는 프리셋을 선택하여 메인 화면에 배치. 최대 5개까지
+              원클릭 실행 가능.
+            </p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #666">
+              <li>개인별 맞춤 설정</li>
+              <li>드래그 앤 드롭으로 순서 변경</li>
+              <li>사용자 프리셋도 등록 가능</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <h3>🔍 스마트 검색 시스템</h3>
+            <p>
+              프리셋을 빠르게 찾는 강력한 검색 기능. 제목, 설명, 프롬프트
+              내용까지 검색.
+            </p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #666">
+              <li>실시간 검색 결과</li>
+              <li>카테고리 필터 조합</li>
+              <li>최근 사용 프리셋 우선 표시</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <h3>📁 자동 프리셋 로드</h3>
+            <p>
+              preset.js 파일을 같은 폴더에 넣으면 자동으로 212개 프리셋 로드.
+            </p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #666">
+              <li>설치 즉시 사용 가능</li>
+              <li>오류 없는 폴백 시스템</li>
+              <li>프리셋 수 실시간 표시</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <h3>💼 사용자 프리셋 시스템</h3>
+            <p>성공적인 프롬프트를 저장하여 나만의 프리셋 라이브러리 구축.</p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #666">
+              <li>제목, 설명, 이미지 수 설정</li>
+              <li>★ 표시로 구분</li>
+              <li>JSON 형식으로 백업/공유</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <h3>🖼️ 멀티 이미지 프로세싱</h3>
+            <p>여러 참조 이미지를 동시에 사용하여 복잡한 합성 작업 수행.</p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #666">
+              <li>드래그 앤 드롭 지원</li>
+              <li>이미지 목록 관리</li>
+              <li>프리셋별 자동 알림</li>
+            </ul>
+          </div>
+
+          <div class="feature-card">
+            <h3>🎨 템플릿 변수 시스템 <span class="badge beta">BETA</span></h3>
+            <p>프롬프트에 [변수]를 사용하여 동적 프리셋 생성.</p>
+            <ul style="margin-top: 10px; padding-left: 20px; color: #666">
+              <li>[subject], [style], [mood] 등</li>
+              <li>재사용 가능한 템플릿</li>
+              <li>일관된 스타일 유지</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 사용법 -->
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">사용 방법</h2>
+        <p class="section-subtitle">누구나 쉽게 시작할 수 있습니다</p>
+
+        <div class="preset-showcase">
+          <h3>기본 워크플로우</h3>
+          <ol style="line-height: 2.5; font-size: 1.1em; margin: 20px 0">
+            <li>
+              <strong>이미지 열기:</strong> Photoshop에서 편집할 이미지를 엽니다
+            </li>
+            <li>
+              <strong>영역 선택:</strong> 선택 도구로 변환할 영역을 지정합니다
+            </li>
+            <li>
+              <strong>플러그인 실행:</strong> File > Scripts >
+              Nano-Banana-Gemini
+            </li>
+            <li>
+              <strong>프리셋 선택 또는 프롬프트 입력:</strong>
+              <ul style="margin: 10px 0; padding-left: 30px">
+                <li>빠른 프리셋 버튼 클릭 (원클릭 실행)</li>
+                <li>프리셋 목록에서 선택 후 적용</li>
+                <li>직접 프롬프트 작성</li>
+              </ul>
+            </li>
+            <li>
+              <strong>옵션 설정:</strong> 참조 이미지 추가, 전경색 사용 등
+            </li>
+            <li><strong>생성:</strong> "생성" 버튼 클릭 후 10-30초 대기</li>
+          </ol>
+
+          <h3 style="margin-top: 40px">프로 팁</h3>
+          <div class="features" style="margin-top: 20px">
+            <div class="feature-card">
+              <h4>💡 최적 해상도</h4>
+              <p>
+                1280px 이하로 작업하면 더 빠른 생성. 생성 후 Photoshop에서
+                업스케일.
+              </p>
+            </div>
+            <div class="feature-card">
+              <h4>💡 레이어 마스크</h4>
+              <p>자동 생성된 마스크를 편집하여 원본과 자연스럽게 블렌딩.</p>
+            </div>
+            <div class="feature-card">
+              <h4>💡 액션 녹화</h4>
+              <p>자주 사용하는 워크플로우를 액션으로 저장하여 배치 처리.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 스크립트 실행 & 액션 등록 -->
+    <section class="section" style="background: var(--light);">
+      <div class="container">
+        <h2 class="section-title">⚡ 빠른 실행 설정</h2>
+        <p class="section-subtitle">단축키로 1초만에 실행하기</p>
+
+        <div class="preset-showcase">
+          <h3>방법 1: 스크립트 직접 실행</h3>
+          <div class="installation-steps" style="margin-top: 30px;">
+            <div class="step">
+              <div class="step-number">1</div>
+              <h3>스크립트 찾아보기</h3>
+              <p>File → Scripts → Browse...</p>
+              <p style="font-size: 0.9em; color: #666; margin-top: 5px;">파일 → 스크립트 → 찾아보기...</p>
+            </div>
+            <div class="step">
+              <div class="step-number">2</div>
+              <h3>JSX 파일 선택</h3>
+              <p>Nano-Banana-Gemini.jsx 선택</p>
+              <p style="font-size: 0.9em; color: #666; margin-top: 5px;">다운로드한 파일 위치에서 선택</p>
+            </div>
+            <div class="step">
+              <div class="step-number">3</div>
+              <h3>실행</h3>
+              <p>열기 클릭하여 스크립트 실행</p>
+              <p style="font-size: 0.9em; color: #666; margin-top: 5px;">테스트 실행 가능</p>
+            </div>
+          </div>
+
+          <h3 style="margin-top: 60px;">방법 2: 단축키 액션 만들기 (추천) <span class="badge new">PRO</span></h3>
+          
+          <div class="features" style="margin-top: 30px;">
+            <div class="feature-card">
+              <h4>📌 Step 1: 액션 패널 열기</h4>
+              <p><strong>Window → Actions</strong></p>
+              <p style="font-size: 0.9em; color: #666; margin-top: 10px;">
+                창 → 액션 패널을 엽니다<br>
+                단축키: Alt+F9 (Windows) / Option+F9 (Mac)
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <h4>📌 Step 2: 새 액션 만들기</h4>
+              <p><strong>새 액션 만들기 버튼 클릭</strong></p>
+              <ul style="margin-top: 10px; padding-left: 20px; color: #666; font-size: 0.9em;">
+                <li>이름: "Nano Banana AI" 입력</li>
+                <li>단축키: F5 또는 원하는 키 선택</li>
+                <li>Shift/Ctrl 조합 가능 (예: Shift+F5)</li>
+                <li>녹화(Record) 버튼 클릭</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <h4>📌 Step 3: 스크립트 녹화</h4>
+              <p><strong>File → Scripts → Browse...</strong></p>
+              <ul style="margin-top: 10px; padding-left: 20px; color: #666; font-size: 0.9em;">
+                <li>Nano-Banana-Gemini.jsx 선택</li>
+                <li>실행 (창이 나타나면 취소)</li>
+                <li>액션 패널에서 정지(■) 버튼 클릭</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                      color: white; 
+                      padding: 30px; 
+                      border-radius: 15px; 
+                      text-align: center; 
+                      margin-top: 40px;">
+            <h3 style="margin-bottom: 15px;">🎉 완료!</h3>
+            <p style="font-size: 1.2em; opacity: 0.95;">
+              이제 <strong>F5</strong> 키만 누르면 Nano Banana가 즉시 실행됩니다!
+            </p>
+            <p style="margin-top: 10px; opacity: 0.85; font-size: 0.95em;">
+              선택 영역 지정 → F5 → 프롬프트 입력 → 생성
+            </p>
+          </div>
+
+          <h3 style="margin-top: 60px;">액션 활용 팁</h3>
+          <div class="features" style="margin-top: 20px;">
+            <div class="feature-card">
+              <h4>🔄 배치 처리</h4>
+              <p>File → Automate → Batch를 사용하여 여러 이미지에 동일한 AI 효과 적용</p>
+            </div>
+            <div class="feature-card">
+              <h4>⌨️ 단축키 변경</h4>
+              <p>액션 패널에서 액션 우클릭 → Action Options에서 단축키 재설정</p>
+            </div>
+            <div class="feature-card">
+              <h4>📁 액션 공유</h4>
+              <p>액션 패널 메뉴 → Save Actions로 저장하여 팀원과 공유</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">자주 묻는 질문</h2>
+        <p class="section-subtitle">궁금한 점을 빠르게 해결하세요</p>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            Q: 무료인가요?
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              네, 완전 무료입니다. Google Gemini API도 무료 티어가 있어 비용
+              없이 사용할 수 있습니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            Q: 어떤 Photoshop 버전을 지원하나요?
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              Photoshop CC 2020 이상 버전을 지원합니다. 최신 버전(2024,
+              2025)에서 최적화되어 있습니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            Q: preset.js 파일은 꼭 필요한가요?
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              아니요, 필수는 아닙니다. preset.js가 없어도 기본 프리셋과 수동
+              프롬프트 입력으로 사용 가능합니다. 하지만 212개의 전문 프리셋을
+              사용하려면 preset.js를 함께 설치하는 것을 권장합니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            Q: 한국어 프롬프트도 지원하나요?
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              네, 한국어를 포함한 모든 언어를 지원합니다. 한글 프롬프트도
+              정확하게 전달되어 처리됩니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            Q: 생성된 이미지의 저작권은?
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              생성된 이미지는 사용자에게 귀속됩니다. 상업적 용도로도 자유롭게
+              사용 가능합니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            Q: 오류가 발생하면 어떻게 하나요?
+            <span class="faq-icon">▼</span>
+          </div>
+          <div class="faq-answer">
+            <p>
+              대부분의 오류는 API 키 문제입니다. 설정 버튼을 눌러 API 키를 다시
+              입력해보세요. 이미지 크기가 너무 크면 1280px 이하로 줄여보세요.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section
+      class="section"
+      style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-align: center;
+      "
+    >
+      <div class="container">
+        <h2 class="section-title" style="color: white">
+          지금 바로 시작하세요!
+        </h2>
+        <p class="section-subtitle" style="color: rgba(255, 255, 255, 0.9)">
+          AI와 함께하는 창의적인 이미지 편집의 세계
+        </p>
+
+        <div class="cta-buttons" style="margin-top: 40px">
+          <a href="https://drive.google.com/drive/folders/1WyKX3MemrdCgFc5J9OHRN0M1xEmnUxaZ?usp=sharing" 
+             class="btn btn-primary" 
+             target="_blank"
+            >파일 다운로드</a
+          >
+          <a
+            href="https://github.com/yourusername/nano-banana"
+            class="btn btn-secondary"
+            >GitHub</a
+          >
+        </div>
+
+        <p style="margin-top: 40px; opacity: 0.9">
+          ⭐ 212개의 프리셋 | 🚀 10-30초 생성 | 💾 무제한 저장 | 🌏 모든 언어
+          지원
+        </p>
+      </div>
+    </section>
+
+    <!-- 푸터 -->
+    <footer>
+      <div class="container">
+        <p>© 2025 Nano Banana Plug-in for Photoshop. Made with 🍌 by Genie</p>
+      </div>
+    </footer>
+
+    <script>
+      // 탭 전환
+      function showTab(tabName) {
+        const tabs = document.querySelectorAll('.tab')
+        const contents = document.querySelectorAll('.tab-content')
+
+        tabs.forEach((tab) => {
+          tab.classList.remove('active')
+          if (tab.textContent.toLowerCase().includes(tabName.toLowerCase())) {
+            tab.classList.add('active')
+          }
+        })
+
+        contents.forEach((content) => {
+          content.classList.remove('active')
+        })
+
+        document.getElementById(tabName).classList.add('active')
+      }
+
+      // FAQ 아코디언
+      document.querySelectorAll('.faq-question').forEach((question) => {
+        question.addEventListener('click', function () {
+          const item = this.parentElement
+          item.classList.toggle('active')
+        })
+      })
+
+      // 다운로드 함수 (더 이상 필요 없지만 남겨둠)
+      function downloadFiles() {
+        window.open('https://drive.google.com/drive/folders/1WyKX3MemrdCgFc5J9OHRN0M1xEmnUxaZ?usp=sharing', '_blank')
+      }
+
+      // 스크롤 애니메이션
+      const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px',
+      }
+
+      const observer = new IntersectionObserver(function (entries) {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.style.animation = 'fadeInUp 0.6s ease forwards'
+          }
+        })
+      }, observerOptions)
+
+      document
+        .querySelectorAll('.feature-card, .step, .preset-showcase')
+        .forEach((el) => {
+          observer.observe(el)
+        })
+    </script>
+  </body>
+</html>

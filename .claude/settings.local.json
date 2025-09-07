@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(open:*)",
+      "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_HbTqNC/**)",
+      "mcp__exa__web_search_exa",
+      "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_YHvgSo/**)",
+      "Bash(git commit:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(gh release create:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -21,7 +21,7 @@
 // ===== 버전 정보 =====
 var PLUGIN_VERSION = "2.1.0";
 var AUTO_UPDATE_ENABLED = true;
-var UPDATE_CHECK_URL = "https://api.github.com/repos/jaehyunjang/nanobanana/releases/latest";
+var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
 // ===== 설정 =====
 var CONFIG = {
@@ -2355,7 +2355,7 @@ SmartUpdater.prototype.downloadNewFiles = function(updateInfo) {
     tempFolder.create();
     
     // GitHub releases URL에서 파일별 URL 생성
-    var baseUrl = "https://github.com/jaehyunjang/nanobanana/releases/download/v" + updateInfo.newVersion;
+    var baseUrl = "https://github.com/NewTurn2017/nanobanana/releases/download/v" + updateInfo.newVersion;
     
     for (var i = 0; i < this.updateFiles.length; i++) {
         var fileName = this.updateFiles[i];

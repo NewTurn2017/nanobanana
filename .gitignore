@@ -1,0 +1,10 @@
+*.backup
+*.old
+*.tmp
+*.updating
+.DS_Store
+node_modules/
+*.log
+backups/
+temp/
+old/

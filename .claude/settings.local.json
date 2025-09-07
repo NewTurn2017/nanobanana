@@ -16,7 +16,8 @@
       "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_of5mtc/**)",
       "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_mHZQiR/**)",
       "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_LydReh/**)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_XJx4yc/**)"
     ],
     "deny": [],
     "ask": []

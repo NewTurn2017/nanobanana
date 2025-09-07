@@ -1,7 +1,8 @@
 /**
- * Nano Banana for Photoshop v2.1.0 - Google Gemini API 통합 버전
+ * Nano Banana for Photoshop v2.3.1 - Google Gemini API 통합 버전
  * 
  * 제작자: Genie
+ * 웹사이트: www.codewithgenie.com
  * 
  * 요구사항:
  * - macOS: curl (사전 설치됨)
@@ -19,7 +20,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.2.3";
+var PLUGIN_VERSION = "2.3.1";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -151,6 +152,109 @@ function saveQuickPresetIds(ids) {
     } catch(e) {
         return false;
     }
+}
+
+// ===== 세션 데이터 관리 =====
+function getSessionDataFile() {
+    var userDataFolder = new Folder(Folder.userData + "/NanoBanana");
+    if (!userDataFolder.exists) {
+        userDataFolder.create();
+    }
+    return new File(userDataFolder + "/session_data.json");
+}
+
+function saveSessionData(data) {
+    var file = getSessionDataFile();
+    try {
+        file.open("w");
+        file.encoding = "UTF-8";
+        
+        // 수동으로 JSON 생성
+        var json = '{';
+        json += '"prompt":"' + escapeJsonString(data.prompt || '') + '",';
+        json += '"referenceFiles":[';
+        
+        if (data.referenceFiles && data.referenceFiles.length > 0) {
+            for (var i = 0; i < data.referenceFiles.length; i++) {
+                json += '"' + escapeJsonString(data.referenceFiles[i]) + '"';
+                if (i < data.referenceFiles.length - 1) json += ',';
+            }
+        }
+        json += '],';
+        json += '"backgroundColor":' + (data.backgroundColor ? 
+            '{"r":' + data.backgroundColor.r + ',"g":' + data.backgroundColor.g + ',"b":' + data.backgroundColor.b + '}' : 
+            'null');
+        json += '}';
+        
+        file.write(json);
+        file.close();
+        return true;
+    } catch(e) {
+        return false;
+    }
+}
+
+function loadSessionData() {
+    var file = getSessionDataFile();
+    if (file.exists) {
+        try {
+            file.open("r");
+            file.encoding = "UTF-8";
+            var content = file.read();
+            file.close();
+            
+            // 간단한 JSON 파싱
+            var data = {
+                prompt: '',
+                referenceFiles: [],
+                backgroundColor: null
+            };
+            
+            // 프롬프트 추출
+            var promptMatch = content.match(/"prompt"\s*:\s*"([^"]*)"/);
+            if (promptMatch) {
+                // 유니코드 이스케이프 문자를 실제 문자로 변환
+                data.prompt = unescapeJsonString(promptMatch[1]);
+            }
+            
+            // 참조 파일 추출
+            var filesMatch = content.match(/"referenceFiles"\s*:\s*\[(.*?)\]/);
+            if (filesMatch) {
+                var filesStr = filesMatch[1];
+                if (filesStr) {
+                    var fileMatches = filesStr.match(/"([^"]+)"/g);
+                    if (fileMatches) {
+                        for (var i = 0; i < fileMatches.length; i++) {
+                            var filePath = fileMatches[i].replace(/"/g, '');
+                            // 파일 경로도 유니코드 디코딩
+                            data.referenceFiles.push(unescapeJsonString(filePath));
+                        }
+                    }
+                }
+            }
+            
+            // 배경색 추출
+            var bgMatch = content.match(/"backgroundColor"\s*:\s*\{([^}]+)\}/);
+            if (bgMatch) {
+                var rMatch = bgMatch[1].match(/"r"\s*:\s*(\d+)/);
+                var gMatch = bgMatch[1].match(/"g"\s*:\s*(\d+)/);
+                var bMatch = bgMatch[1].match(/"b"\s*:\s*(\d+)/);
+                
+                if (rMatch && gMatch && bMatch) {
+                    data.backgroundColor = {
+                        r: parseInt(rMatch[1]),
+                        g: parseInt(gMatch[1]),
+                        b: parseInt(bMatch[1])
+                    };
+                }
+            }
+            
+            return data;
+        } catch(e) {
+            return null;
+        }
+    }
+    return null;
 }
 
 // ===== 사용자 프리셋 관리 =====
@@ -460,9 +564,38 @@ function encodeImageBase64(imageFile, progressWin) {
                 return data;
             }
         } else {
-            // macOS base64
-            var cmd = 'base64 -i "' + imageFile.fsName + '" > "' + outputFile.fsName + '"';
+            // macOS base64 — 원본을 임시 복사 후 인코딩 (Yoink 등 임시/프라미스 파일 호환)
+            // 원본 확장자 보존
+            var fileNameMac = imageFile.name || "";
+            var extMac = "";
+            var dotIndexMac = fileNameMac.lastIndexOf(".");
+            if (dotIndexMac > -1) {
+                extMac = fileNameMac.substring(dotIndexMac);
+            }
+            if (!extMac) extMac = ".jpg"; // fallback
+
+            var tempCopyMac = new File(Folder.temp + "/temp_encode_" + new Date().getTime() + extMac);
+            var copySuccessMac = false;
+            try {
+                copySuccessMac = imageFile.copy(tempCopyMac.fsName);
+            } catch(eMac) {
+                copySuccessMac = false;
+            }
+            if (!copySuccessMac) {
+                // 시스템 복사 폴백 (경로/권한 이슈 대응)
+                app.system('cp -f "' + imageFile.fsName + '" "' + tempCopyMac.fsName + '"');
+            }
+
+            if (!tempCopyMac.exists) {
+                if (progressWin) progressWin.updateStatus("Error: Could not copy file on macOS");
+                return null;
+            }
+
+            var cmd = 'base64 -i "' + tempCopyMac.fsName + '" > "' + outputFile.fsName + '"';
             app.system(cmd);
+
+            // 임시 복사본 제거
+            try { tempCopyMac.remove(); } catch (eRm) {}
             
             if (outputFile.exists) {
                 outputFile.open("r");
@@ -514,7 +647,8 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
                     if (progressWin) progressWin.updateStatus("참조 이미지 " + (i + 1) + "/" + referenceFiles.length + " 인코딩 중...");
                     var refBase64Data = encodeImageBase64(referenceFiles[i], progressWin);
                     if (refBase64Data) {
-                        partsArray += ',{"inlineData":{"mime_type":"image/jpeg","data":"' + refBase64Data + '"}}';
+                        var refMime = getMimeType(referenceFiles[i]);
+                        partsArray += ',{"inlineData":{"mime_type":"' + refMime + '","data":"' + refBase64Data + '"}}';
                     }
                 }
                 // 취소 확인
@@ -523,7 +657,8 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
         }
         
         // 메인 이미지 (선택 영역) 추가
-        partsArray += ',{"inlineData":{"mime_type":"image/jpeg","data":"' + base64Data + '"}}';
+        var mainMime = getMimeType(imageFile);
+        partsArray += ',{"inlineData":{"mime_type":"' + mainMime + '","data":"' + base64Data + '"}}';
         
         var jsonPayload = '{"contents":[{"role":"user","parts":[' +
                           partsArray +
@@ -1106,12 +1241,18 @@ function testAPIKey(apiKey) {
 // ===== 메인 대화상자 =====
 
 function createDialog() {
-    var dialog = new Window("dialog", "나노바나나(WithGenie Ver 1.0)");
+    var dialog = new Window("dialog", "나노바나나 by Genie - www.codewithgenie.com");
     dialog.orientation = "column";
     dialog.alignChildren = "fill";
     dialog.preferredSize.width = 500;
     dialog.margins = 15;
     dialog.spacing = 10;
+    
+    // 세션 데이터 로드 (없거나 파싱 실패 시 안전한 기본값 사용)
+    var sessionData = loadSessionData();
+    if (!sessionData) {
+        sessionData = { prompt: '', referenceFiles: [], backgroundColor: null };
+    }
     
     // 상단 행 - 모델 정보와 설정
     var topRow = dialog.add("group");
@@ -1125,7 +1266,7 @@ function createDialog() {
     var modelInfo = leftGroup.add("statictext", undefined, "나노바나나 (Gemini 2.5 Flash)");
     modelInfo.graphics.font = ScriptUI.newFont(modelInfo.graphics.font.name, ScriptUI.FontStyle.BOLD, 12);
     
-    var versionText = leftGroup.add("statictext", undefined, "버전: v" + PLUGIN_VERSION);
+    var versionText = leftGroup.add("statictext", undefined, "버전: v" + PLUGIN_VERSION + " | 제작: Genie");
     versionText.graphics.font = ScriptUI.newFont(versionText.graphics.font.name, ScriptUI.FontStyle.REGULAR, 10);
     
     // 오른쪽: 설정 및 업데이트 버튼
@@ -1375,7 +1516,7 @@ function createDialog() {
     var promptGroup = dialog.add("panel", undefined, "프롬프트:");
     promptGroup.alignChildren = "fill";
     promptGroup.margins = 10;
-    dialog.promptInput = promptGroup.add("edittext", undefined, "");
+    dialog.promptInput = promptGroup.add("edittext", undefined, sessionData.prompt || "");
     dialog.promptInput.characters = 60;
     dialog.promptInput.active = true;
     
@@ -1610,18 +1751,32 @@ function createDialog() {
     refButtonGroup.alignment = "fill";
     var addRefButton = refButtonGroup.add("button", undefined, "이미지 추가");
     addRefButton.preferredSize.width = 100;
+    var removeRefButton = refButtonGroup.add("button", undefined, "선택 삭제");
+    removeRefButton.preferredSize.width = 100;
     var clearRefButton = refButtonGroup.add("button", undefined, "모두 지우기");
     clearRefButton.preferredSize.width = 100;
     
     // 이미지 목록 표시
     var refListBox = refPanel.add("listbox", undefined, []);
     refListBox.preferredSize.height = 80;
+    refListBox.multiselect = true; // 다중 선택 허용 (삭제/관리 용이)
+    
+    // 저장된 참조 파일 복원
     dialog.referenceFiles = [];
+    if (sessionData.referenceFiles && sessionData.referenceFiles.length > 0) {
+        for (var i = 0; i < sessionData.referenceFiles.length; i++) {
+            var file = new File(sessionData.referenceFiles[i]);
+            if (file.exists) {
+                dialog.referenceFiles.push(file);
+                refListBox.add("item", file.displayName);
+            }
+        }
+    }
     
     addRefButton.onClick = function() {
-        // Windows에서는 multiselect를 지원하지 않을 수 있으므로 조건부 처리
+        // 가능하면 멀티 선택 허용 (Windows 포함)
         var fileFilter = CONFIG.IS_WINDOWS ? "Image Files:*.jpg;*.jpeg;*.png" : "*.jpg;*.jpeg;*.png";
-        var allowMultiple = !CONFIG.IS_WINDOWS;
+        var allowMultiple = true;
         var file = File.openDialog("참조 이미지 선택", fileFilter, allowMultiple);
         
         if (file) {
@@ -1641,12 +1796,40 @@ function createDialog() {
                     refListBox.add("item", fileName);
                 }
             }
-            
-            // Windows에서 멀티 선택이 안되는 경우 추가 안내
-            if (CONFIG.IS_WINDOWS && allowMultiple === false) {
-                alert("Windows에서는 한 번에 하나의 파일만 선택 가능합니다.\n여러 파일을 추가하려면 '이미지 추가' 버튼을 여러 번 클릭하세요.");
-            }
         }
+    };
+    
+    // 선택 항목 삭제 (부분 지우기)
+    removeRefButton.onClick = function() {
+        try {
+            var sel = refListBox.selection;
+            if (!sel) {
+                alert("삭제할 항목을 선택하세요.");
+                return;
+            }
+            // 단일/다중 선택 모두 지원
+            var indices = [];
+            if (sel instanceof Array) {
+                for (var s = 0; s < sel.length; s++) {
+                    for (var i = 0; i < refListBox.items.length; i++) {
+                        if (refListBox.items[i] === sel[s]) { indices.push(i); break; }
+                    }
+                }
+            } else {
+                for (var j = 0; j < refListBox.items.length; j++) {
+                    if (refListBox.items[j] === sel) { indices.push(j); break; }
+                }
+            }
+            // 큰 인덱스부터 제거
+            indices.sort(function(a,b){ return b-a; });
+            for (var k = 0; k < indices.length; k++) {
+                var idx = indices[k];
+                if (dialog.referenceFiles && dialog.referenceFiles.length > idx) {
+                    dialog.referenceFiles.splice(idx, 1);
+                }
+                refListBox.remove(idx);
+            }
+        } catch(e) {}
     };
     
     clearRefButton.onClick = function() {
@@ -1683,6 +1866,9 @@ function createDialog() {
     var getForegroundButton = colorButtonGroup.add("button", undefined, "전경색");
     getForegroundButton.preferredSize.width = 60;
     
+    var palette256Button = colorButtonGroup.add("button", undefined, "팔레트256");
+    palette256Button.preferredSize.width = 80;
+    
     // 프롬프트에 색상 추가 옵션
     var colorOptionsGroup = colorPanel.add("group");
     colorOptionsGroup.alignment = "fill";
@@ -1695,8 +1881,13 @@ function createDialog() {
     colorFormatDropdown.preferredSize.width = 120;
     colorFormatDropdown.enabled = false;
     
-    // 선택된 색상 저장
-    dialog.selectedColor = null;
+    // 선택된 색상 저장 (세션 데이터에서 복원)
+    dialog.selectedColor = sessionData.backgroundColor || null;
+    
+    // 세션에서 색상이 있으면 프리뷰 업데이트
+    if (dialog.selectedColor) {
+        updateColorPreview(dialog.selectedColor);
+    }
     
     // 색상 프리뷰 업데이트 함수
     function updateColorPreview(color) {
@@ -1741,6 +1932,14 @@ function createDialog() {
         }
     };
     
+    // 256 팔레트 버튼 이벤트
+    palette256Button.onClick = function() {
+        var color = createPalette256Picker(dialog.selectedColor);
+        if (color) {
+            updateColorPreview(color);
+        }
+    };
+    
     // 자동 추가 체크박스 이벤트
     addToPromptCheckbox.onClick = function() {
         colorFormatDropdown.enabled = addToPromptCheckbox.value && dialog.selectedColor !== null;
@@ -1758,10 +1957,69 @@ function createDialog() {
     var buttonGroup = dialog.add("group");
     buttonGroup.alignment = "center";
     var generateButton = buttonGroup.add("button", undefined, "생성");
+    generateButton.preferredSize.width = 80;
+    var resetButton = buttonGroup.add("button", undefined, "초기화");
+    resetButton.preferredSize.width = 60;
     var cancelButton = buttonGroup.add("button", undefined, "취소");
+    cancelButton.preferredSize.width = 60;
     
-    generateButton.onClick = function() { dialog.close(1); };
-    cancelButton.onClick = function() { dialog.close(0); };
+    // 초기화 버튼 클릭
+    resetButton.onClick = function() {
+        // 프롬프트 초기화
+        dialog.promptInput.text = "";
+        
+        // 참조 이미지 초기화
+        refListBox.removeAll();
+        dialog.referenceFiles = [];
+        
+        // 색상 초기화
+        dialog.selectedColor = null;
+        colorHexText.text = "색상 없음";
+        try {
+            selectedColorPanel.onDraw = function() {};
+            selectedColorPanel.notify("onDraw");
+        } catch(e) {}
+        
+        // 세션 데이터 삭제
+        var sessionFile = getSessionDataFile();
+        if (sessionFile.exists) {
+            sessionFile.remove();
+        }
+        
+        alert("초기화되었습니다.");
+    };
+    
+    generateButton.onClick = function() {
+        // 세션 데이터 저장
+        var filePathsArray = [];
+        if (dialog.referenceFiles) {
+            for (var i = 0; i < dialog.referenceFiles.length; i++) {
+                filePathsArray.push(dialog.referenceFiles[i].fsName);
+            }
+        }
+        saveSessionData({
+            prompt: dialog.promptInput.text,
+            referenceFiles: filePathsArray,
+            backgroundColor: dialog.selectedColor
+        });
+        dialog.close(1);
+    };
+    
+    cancelButton.onClick = function() {
+        // 취소 시에도 세션 데이터 저장
+        var filePathsArray = [];
+        if (dialog.referenceFiles) {
+            for (var i = 0; i < dialog.referenceFiles.length; i++) {
+                filePathsArray.push(dialog.referenceFiles[i].fsName);
+            }
+        }
+        saveSessionData({
+            prompt: dialog.promptInput.text,
+            referenceFiles: filePathsArray,
+            backgroundColor: dialog.selectedColor
+        });
+        dialog.close(0);
+    };
     
     return dialog;
 }
@@ -1844,6 +2102,47 @@ function hexToRgb(hex) {
     };
 }
 
+// 파일에서 MIME 타입 추론
+function getMimeType(file) {
+    try {
+        var name = null;
+        if (file) {
+            if (file.name) name = file.name;
+            else if (file.fsName) name = file.fsName;
+            else if (typeof file === 'string') name = file;
+        }
+        if (!name) return "image/jpeg";
+        var dot = name.lastIndexOf('.');
+        var ext = dot >= 0 ? name.substring(dot + 1).toLowerCase() : "";
+        switch (ext) {
+            case 'jpg':
+            case 'jpeg': return 'image/jpeg';
+            case 'png': return 'image/png';
+            case 'webp': return 'image/webp';
+            case 'gif': return 'image/gif';
+            case 'bmp': return 'image/bmp';
+            case 'tif':
+            case 'tiff': return 'image/tiff';
+            case 'heic': return 'image/heic';
+            default: return 'image/jpeg';
+        }
+    } catch (e) {
+        return 'image/jpeg';
+    }
+}
+
+// 256색(3-3-2) 팔레트 인덱스를 RGB로 변환
+function indexTo332Color(index) {
+    index = Math.max(0, Math.min(255, index|0));
+    var r3 = (index >> 5) & 0x07; // 3 bits
+    var g3 = (index >> 2) & 0x07; // 3 bits
+    var b2 = index & 0x03;        // 2 bits
+    var r = Math.round(r3 * 255 / 7);
+    var g = Math.round(g3 * 255 / 7);
+    var b = Math.round(b2 * 255 / 3);
+    return { r: r, g: g, b: b };
+}
+
 function rgbToCmyk(r, g, b) {
     r = r / 255;
     g = g / 255;
@@ -1917,8 +2216,71 @@ function getColorName(color) {
 // ===== 고급 색상 피커 =====
 
 function createAdvancedColorPicker(initialColor) {
-    // Photoshop ExtendScript에서는 네이티브 색상 피커를 직접 호출할 수 없으므로
-    // 커스텀 색상 피커를 사용합니다
+    // 1) 시도: Photoshop 네이티브 고급 컬러 피커 사용 (app.showColorPicker)
+    try {
+        if (app && typeof app.showColorPicker === 'function') {
+            // 현재 전경색 백업
+            var original = app.foregroundColor;
+
+            // 초기 색상이 있으면 전경색을 해당 색으로 설정해 피커 초기값으로 사용
+            try {
+                if (initialColor && typeof initialColor.r === 'number') {
+                    var temp = new SolidColor();
+                    temp.rgb.red = initialColor.r;
+                    temp.rgb.green = initialColor.g;
+                    temp.rgb.blue = initialColor.b;
+                    app.foregroundColor = temp;
+                }
+            } catch (e1) {}
+
+            // 다이얼로그 표시 허용 모드 보장
+            var oldDialogs = app.displayDialogs;
+            try { app.displayDialogs = DialogModes.ALL; } catch (e2) {}
+
+            var ok = app.showColorPicker();
+
+            // 기존 다이얼로그 모드 복원
+            try { app.displayDialogs = oldDialogs; } catch (e3) {}
+
+            var result = null;
+            if (ok) {
+                try {
+                    var picked = app.foregroundColor.rgb;
+                    result = {
+                        r: Math.round(picked.red),
+                        g: Math.round(picked.green),
+                        b: Math.round(picked.blue)
+                    };
+                } catch (e4) {}
+            }
+
+            // 사용자 전경색 복원 (플러그인이 전역 상태를 바꾸지 않도록)
+            try { app.foregroundColor = original; } catch (e5) {}
+
+            return result;
+        }
+    } catch (e) {
+        // 네이티브 피커 실패 시 다음 폴백으로 진행
+    }
+
+    // 2) 폴백: ExtendScript 공용 컬러 피커 ($.colorPicker)
+    try {
+        if (typeof $.colorPicker === 'function') {
+            var pickedInt = $.colorPicker();
+            if (pickedInt !== -1) {
+                // pickedInt는 0xRRGGBB 정수
+                var r = (pickedInt >> 16) & 0xFF;
+                var g = (pickedInt >> 8) & 0xFF;
+                var b = pickedInt & 0xFF;
+                return { r: r, g: g, b: b };
+            }
+            return null; // 취소
+        }
+    } catch (e6) {
+        // 무시하고 최종 폴백 사용
+    }
+
+    // 3) 최종 폴백: 커스텀 피커 사용
     return createFallbackColorPicker(initialColor);
 }
 
@@ -1972,45 +2334,39 @@ function createFallbackColorPicker(initialColor) {
     var hexInput = hexGroup.add("edittext", undefined, rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b).substring(1));
     hexInput.characters = 8;
     
-    // 간단한 프리셋 색상
-    var presetPanel = dialog.add("panel", undefined, "빠른 선택");
-    presetPanel.orientation = "row";
-    presetPanel.alignChildren = "center";
+    // 256 컬러 빠른 선택 (3-3-2 팔레트)
+    var swatchPanel = dialog.add("panel", undefined, "빠른 선택 (256)");
+    swatchPanel.alignChildren = "fill";
+    swatchPanel.margins = 10;
     
-    var presetColors = [
-        {r: 255, g: 0, b: 0},     // 빨강
-        {r: 0, g: 255, b: 0},     // 초록
-        {r: 0, g: 0, b: 255},     // 파랑
-        {r: 255, g: 255, b: 0},   // 노랑
-        {r: 255, g: 0, b: 255},   // 마젠타
-        {r: 0, g: 255, b: 255},   // 시안
-        {r: 0, g: 0, b: 0},       // 검정
-        {r: 255, g: 255, b: 255}  // 하양
-    ];
-    
-    for (var i = 0; i < presetColors.length; i++) {
-        (function(color) {
-            var colorBtn = presetPanel.add("button", undefined, "");
-            colorBtn.preferredSize.width = 30;
-            colorBtn.preferredSize.height = 30;
-            colorBtn.fillBrush = colorBtn.graphics.newBrush(colorBtn.graphics.BrushType.SOLID_COLOR, [color.r/255, color.g/255, color.b/255]);
-            
-            colorBtn.onDraw = function() {
-                this.graphics.newPath();
-                this.graphics.rectPath(0, 0, this.size.width, this.size.height);
-                this.graphics.fillPath(this.fillBrush);
-            };
-            
-            colorBtn.onClick = function() {
-                selectedColor = {r: color.r, g: color.g, b: color.b};
-                rInput.text = color.r.toString();
-                gInput.text = color.g.toString();
-                bInput.text = color.b.toString();
-                hexInput.text = rgbToHex(color.r, color.g, color.b).substring(1);
-                hexText.text = rgbToHex(color.r, color.g, color.b);
-                updatePreview();
-            };
-        })(presetColors[i]);
+    var rows256 = 16, cols256 = 16;
+    var cellSize = 18;
+    for (var rr = 0; rr < rows256; rr++) {
+        var rowGroup = swatchPanel.add("group");
+        for (var cc = 0; cc < cols256; cc++) {
+            (function(idx){
+                var c332 = indexTo332Color(idx);
+                var colorBtn = rowGroup.add("button", undefined, "");
+                colorBtn.preferredSize.width = cellSize;
+                colorBtn.preferredSize.height = cellSize;
+                colorBtn.helpTip = rgbToHex(c332.r, c332.g, c332.b);
+                colorBtn.fillBrush = colorBtn.graphics.newBrush(colorBtn.graphics.BrushType.SOLID_COLOR, [c332.r/255, c332.g/255, c332.b/255]);
+                colorBtn.onDraw = function() {
+                    this.graphics.newPath();
+                    this.graphics.rectPath(0, 0, this.size.width, this.size.height);
+                    this.graphics.fillPath(this.fillBrush);
+                };
+                colorBtn.onClick = function() {
+                    selectedColor = { r: c332.r, g: c332.g, b: c332.b };
+                    rInput.text = selectedColor.r.toString();
+                    gInput.text = selectedColor.g.toString();
+                    bInput.text = selectedColor.b.toString();
+                    hexInput.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b).substring(1);
+                    hexText.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b);
+                    updatePreview();
+                };
+            })(rr * cols256 + cc);
+        }
     }
     
     // 버튼
@@ -2084,6 +2440,74 @@ function createFallbackColorPicker(initialColor) {
     return null;
 }
 
+// 256 컬러 팔레트 전용 피커 (간단, 빠른 선택)
+function createPalette256Picker(initialColor) {
+    var dialog = new Window("dialog", "256 색상 팔레트");
+    dialog.orientation = "column";
+    dialog.alignChildren = "fill";
+    dialog.spacing = 10;
+    dialog.margins = 15;
+
+    var currentColor = initialColor || { r: 24, g: 47, b: 44 };
+    var selectedColor = { r: currentColor.r, g: currentColor.g, b: currentColor.b };
+
+    // 간단 프리뷰
+    var previewGroup = dialog.add("group");
+    var preview = previewGroup.add("panel");
+    preview.preferredSize.width = 200;
+    preview.preferredSize.height = 30;
+    preview.onDraw = function() {
+        var g = this.graphics;
+        var brush = g.newBrush(g.BrushType.SOLID_COLOR, [selectedColor.r/255, selectedColor.g/255, selectedColor.b/255]);
+        g.newPath();
+        g.rectPath(0, 0, this.size.width, this.size.height);
+        g.fillPath(brush);
+    };
+    var hexLabel = previewGroup.add("statictext", undefined, rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b));
+
+    // 16x16 스와치 그리드
+    var swatchPanel = dialog.add("panel", undefined, "빠른 선택 (256)");
+    swatchPanel.alignChildren = "fill";
+    swatchPanel.margins = 10;
+    var rows = 16, cols = 16;
+    var cell = 18;
+    for (var r = 0; r < rows; r++) {
+        var rowGroup = swatchPanel.add("group");
+        for (var c = 0; c < cols; c++) {
+            (function(idx){
+                var col = indexTo332Color(idx);
+                var btn = rowGroup.add("button", undefined, "");
+                btn.preferredSize.width = cell;
+                btn.preferredSize.height = cell;
+                btn.helpTip = rgbToHex(col.r, col.g, col.b);
+                btn.fillBrush = btn.graphics.newBrush(btn.graphics.BrushType.SOLID_COLOR, [col.r/255, col.g/255, col.b/255]);
+                btn.onDraw = function() {
+                    this.graphics.newPath();
+                    this.graphics.rectPath(0, 0, this.size.width, this.size.height);
+                    this.graphics.fillPath(this.fillBrush);
+                };
+                btn.onClick = function() {
+                    selectedColor = { r: col.r, g: col.g, b: col.b };
+                    try { preview.notify("onDraw"); } catch(e) {}
+                    hexLabel.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b);
+                };
+            })(r * cols + c);
+        }
+    }
+
+    var buttons = dialog.add("group");
+    var ok = buttons.add("button", undefined, "확인");
+    var cancel = buttons.add("button", undefined, "취소");
+
+    ok.onClick = function(){ dialog.close(1); };
+    cancel.onClick = function(){ dialog.close(0); };
+
+    if (dialog.show() === 1) {
+        return selectedColor;
+    }
+    return null;
+}
+
 // ===== 헬퍼 함수 =====
 
 function extractPredictionId(response) {
@@ -2131,6 +2555,13 @@ function escapeJsonString(str) {
         }
     }
     return escaped;
+}
+
+function unescapeJsonString(str) {
+    // 유니코드 이스케이프 문자를 실제 문자로 변환
+    return str.replace(/\\u([0-9a-fA-F]{4})/g, function(match, hex) {
+        return String.fromCharCode(parseInt(hex, 16));
+    }).replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
 }
 
 function toHex(n) {

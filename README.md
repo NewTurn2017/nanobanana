@@ -30,12 +30,26 @@ Google Gemini AI를 활용한 Photoshop 이미지 생성 플러그인
 
 ## 📦 설치 방법
 
-1. **플러그인 복사**
+### 방법 1: 사용자 Scripts 폴더 사용 (권한 불필요) ✅ 추천
+
+1. **사용자 Scripts 폴더에 설치** (암호 입력 불필요)
    ```bash
-   # macOS
-   cp Nano-Banana-Gemini.jsx "/Applications/Adobe Photoshop 2025/Presets/Scripts/"
+   # macOS - 사용자 폴더에 설치
+   mkdir -p ~/Library/Application\ Support/Adobe/Adobe\ Photoshop\ 2025/Presets/Scripts/
+   cp Nano-Banana-Gemini.jsx ~/Library/Application\ Support/Adobe/Adobe\ Photoshop\ 2025/Presets/Scripts/
    
-   # Windows
+   # Windows - 사용자 폴더에 설치
+   copy Nano-Banana-Gemini.jsx "%APPDATA%\Adobe\Adobe Photoshop 2025\Presets\Scripts\"
+   ```
+
+### 방법 2: 시스템 Scripts 폴더 사용 (관리자 권한 필요)
+
+1. **시스템 Scripts 폴더에 설치** (암호 입력 필요)
+   ```bash
+   # macOS - 관리자 권한 필요
+   sudo cp Nano-Banana-Gemini.jsx "/Applications/Adobe Photoshop 2025/Presets/Scripts/"
+   
+   # Windows - 관리자 권한으로 실행
    copy Nano-Banana-Gemini.jsx "C:\Program Files\Adobe\Adobe Photoshop 2025\Presets\Scripts\"
    ```
 

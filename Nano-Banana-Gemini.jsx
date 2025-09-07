@@ -19,7 +19,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.1.0";
+var PLUGIN_VERSION = "2.1.1";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 

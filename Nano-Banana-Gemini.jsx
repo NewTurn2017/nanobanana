@@ -19,7 +19,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.2.0";
+var PLUGIN_VERSION = "2.2.1";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -2684,6 +2684,35 @@ SmartUpdater.prototype.isNewerVersion = function(version1, version2) {
     return false;
 };
 
+// 디버깅용: 최신 버전 정보 가져오기
+SmartUpdater.prototype.getLatestVersionInfo = function() {
+    try {
+        var tempFile = new File(Folder.temp + "/debug_version_" + new Date().getTime() + ".json");
+        var cmd;
+        
+        if (CONFIG.IS_WINDOWS) {
+            cmd = 'curl.exe -s -L "' + UPDATE_CHECK_URL + '" > "' + tempFile.fsName + '"';
+        } else {
+            cmd = 'curl -s -L "' + UPDATE_CHECK_URL + '" > "' + tempFile.fsName + '"';
+        }
+        
+        app.system(cmd);
+        
+        if (tempFile.exists && tempFile.length > 0) {
+            tempFile.open("r");
+            var response = tempFile.read();
+            tempFile.close();
+            tempFile.remove();
+            
+            var tagMatch = response.match(/"tag_name"\s*:\s*"v?([^"]+)"/);
+            if (tagMatch && tagMatch[1]) {
+                return tagMatch[1];
+            }
+        }
+    } catch(e) {}
+    return null;
+};
+
 SmartUpdater.prototype.performUpdate = function(updateInfo) {
     var progressDialog = this.showProgressDialog();
     
@@ -2895,6 +2924,8 @@ function checkForManualUpdate() {
         checkingDialog.margins = 15;
         
         var msg = checkingDialog.add("statictext", undefined, "업데이트를 확인하는 중...");
+        var debugMsg = checkingDialog.add("statictext", undefined, "현재: v" + PLUGIN_VERSION);
+        debugMsg.graphics.font = ScriptUI.newFont(debugMsg.graphics.font.name, ScriptUI.FontStyle.REGULAR, 10);
         checkingDialog.show();
         
         // SmartUpdater 인스턴스 생성 및 업데이트 확인
@@ -2902,6 +2933,9 @@ function checkForManualUpdate() {
         var updateInfo = updater.checkForUpdate();
         
         checkingDialog.close();
+        
+        // 디버깅용: 실제 GitHub API 응답 확인
+        var debugInfo = updater.getLatestVersionInfo();
         
         if (updateInfo) {
             // 새 버전이 있는 경우
@@ -2924,6 +2958,12 @@ function checkForManualUpdate() {
             
             var versionText = latestDialog.add("statictext", undefined, "현재 버전: v" + PLUGIN_VERSION);
             versionText.graphics.font = ScriptUI.newFont(versionText.graphics.font.name, ScriptUI.FontStyle.REGULAR, 12);
+            
+            // 디버그 정보 추가
+            if (debugInfo) {
+                var debugText = latestDialog.add("statictext", undefined, "서버 최신: v" + debugInfo);
+                debugText.graphics.font = ScriptUI.newFont(debugText.graphics.font.name, ScriptUI.FontStyle.REGULAR, 10);
+            }
             
             var okBtn = latestDialog.add("button", undefined, "확인");
             okBtn.preferredSize.width = 100;

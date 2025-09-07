@@ -106,8 +106,8 @@ jobs:
           RELEASE_NOTES="${RELEASE_NOTES}### 📦 설치 방법\n"
           RELEASE_NOTES="${RELEASE_NOTES}1. Nano-Banana-Gemini.jsx 파일을 다운로드합니다\n"
           RELEASE_NOTES="${RELEASE_NOTES}2. Photoshop Scripts 폴더에 복사합니다:\n"
-          RELEASE_NOTES="${RELEASE_NOTES}   - Windows: \`C:\\Program Files\\Adobe\\Adobe Photoshop [Version]\\Presets\\Scripts\\\`\n"
-          RELEASE_NOTES="${RELEASE_NOTES}   - macOS: \`/Applications/Adobe Photoshop [Version]/Presets/Scripts/\`\n"
+          RELEASE_NOTES="${RELEASE_NOTES}   - Windows: C:\\\\Program Files\\\\Adobe\\\\Adobe Photoshop [Version]\\\\Presets\\\\Scripts\\\\\n"
+          RELEASE_NOTES="${RELEASE_NOTES}   - macOS: /Applications/Adobe Photoshop [Version]/Presets/Scripts/\n"
           RELEASE_NOTES="${RELEASE_NOTES}3. Photoshop을 재시작합니다\n"
           RELEASE_NOTES="${RELEASE_NOTES}4. File > Scripts > Nano-Banana-Gemini 메뉴에서 실행합니다\n\n"
           
@@ -143,7 +143,7 @@ jobs:
             echo "✅ Released version v${{ steps.extract_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Release Notes" >> $GITHUB_STEP_SUMMARY
-            echo "${{ steps.extract_features.outputs.RELEASE_NOTES }}" >> $GITHUB_STEP_SUMMARY
+            echo "View the full release at: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.extract_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
           else
             echo "ℹ️ Version v${{ steps.extract_version.outputs.VERSION }} already released. No action needed." >> $GITHUB_STEP_SUMMARY
           fi

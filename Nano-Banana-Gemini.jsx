@@ -19,7 +19,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.1.1";
+var PLUGIN_VERSION = "2.1.0";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -178,6 +178,41 @@ function loadUserPresets() {
         }
     }
     return [];
+}
+
+function deleteUserPreset(presetId) {
+    var userPresets = loadUserPresets();
+    var updatedPresets = [];
+    
+    for (var i = 0; i < userPresets.length; i++) {
+        if (userPresets[i].id !== presetId) {
+            updatedPresets.push(userPresets[i]);
+        }
+    }
+    
+    if (saveUserPresets(updatedPresets)) {
+        return true;
+    }
+    return false;
+}
+
+function editUserPreset(presetId, newTitle, newDescription, newPrompt, newImageCount) {
+    var userPresets = loadUserPresets();
+    
+    for (var i = 0; i < userPresets.length; i++) {
+        if (userPresets[i].id === presetId) {
+            userPresets[i].title = newTitle;
+            userPresets[i].description = newDescription;
+            userPresets[i].prompt = newPrompt;
+            userPresets[i].imageCount = newImageCount;
+            break;
+        }
+    }
+    
+    if (saveUserPresets(userPresets)) {
+        return true;
+    }
+    return false;
 }
 
 function saveUserPresets(userPresets) {
@@ -1082,14 +1117,33 @@ function createDialog() {
     var topRow = dialog.add("group");
     topRow.alignment = "fill";
     
-    var modelInfo = topRow.add("statictext", undefined, "나노바나나");
+    // 왼쪽: 제품명 및 버전 정보
+    var leftGroup = topRow.add("group");
+    leftGroup.orientation = "column";
+    leftGroup.alignChildren = "left";
+    
+    var modelInfo = leftGroup.add("statictext", undefined, "나노바나나 (Gemini 2.5 Flash)");
     modelInfo.graphics.font = ScriptUI.newFont(modelInfo.graphics.font.name, ScriptUI.FontStyle.BOLD, 12);
     
+    var versionText = leftGroup.add("statictext", undefined, "버전: v" + PLUGIN_VERSION);
+    versionText.graphics.font = ScriptUI.newFont(versionText.graphics.font.name, ScriptUI.FontStyle.REGULAR, 10);
+    
+    // 오른쪽: 설정 및 업데이트 버튼
     var settingsGroup = topRow.add("group");
     settingsGroup.alignment = "right";
-    var settingsBtn = settingsGroup.add("button", undefined, "설정");
-    settingsBtn.preferredSize.width = 80;
     
+    var updateBtn = settingsGroup.add("button", undefined, "업데이트 확인");
+    updateBtn.preferredSize.width = 90;
+    
+    var settingsBtn = settingsGroup.add("button", undefined, "설정");
+    settingsBtn.preferredSize.width = 60;
+    
+    // 업데이트 확인 버튼 클릭
+    updateBtn.onClick = function() {
+        checkForManualUpdate();
+    };
+    
+    // 설정 버튼 클릭
     settingsBtn.onClick = function() {
         var newKey = promptForAPIKey(true);
         if (newKey && newKey.length > 10) {
@@ -1273,6 +1327,8 @@ function createDialog() {
     var savePresetButton = presetButtonGroup.add("button", undefined, "현재 프롬프트 저장");
     savePresetButton.enabled = false;
     
+    var managePresetsButton = presetButtonGroup.add("button", undefined, "프리셋 관리");
+    
     // 프리셋 목록 업데이트 함수
     function updatePresetList() {
         presetListBox.removeAll();
@@ -1351,6 +1407,120 @@ function createDialog() {
             // imageCount 정보를 dialog에 저장
             dialog.presetImageCount = preset.imageCount;
         }
+    };
+    
+    // 프리셋 관리 버튼 클릭
+    managePresetsButton.onClick = function() {
+        var selectedPreset = presetListBox.selection && presetListBox.selection.presetData;
+        
+        // 사용자 프리셋인지 확인
+        if (!selectedPreset || !selectedPreset.id || selectedPreset.id.indexOf('user_') !== 0) {
+            alert("사용자가 만든 프리셋만 수정/삭제할 수 있습니다.");
+            return;
+        }
+        
+        var manageDialog = new Window("dialog", "프리셋 관리");
+        manageDialog.orientation = "column";
+        manageDialog.alignChildren = "fill";
+        manageDialog.margins = 15;
+        manageDialog.spacing = 10;
+        
+        manageDialog.add("statictext", undefined, "선택된 프리셋: " + selectedPreset.title);
+        
+        var buttonGroup = manageDialog.add("group");
+        buttonGroup.alignment = "center";
+        
+        var editBtn = buttonGroup.add("button", undefined, "수정");
+        var deleteBtn = buttonGroup.add("button", undefined, "삭제");
+        var cancelBtn = buttonGroup.add("button", undefined, "취소");
+        
+        editBtn.onClick = function() {
+            manageDialog.close();
+            
+            // 수정 대화상자
+            var editDialog = new Window("dialog", "프리셋 수정");
+            editDialog.orientation = "column";
+            editDialog.alignChildren = "fill";
+            editDialog.margins = 15;
+            editDialog.spacing = 10;
+            
+            editDialog.add("statictext", undefined, "제목:");
+            var titleInput = editDialog.add("edittext", undefined, selectedPreset.title);
+            titleInput.characters = 30;
+            
+            editDialog.add("statictext", undefined, "설명:");
+            var descInput = editDialog.add("edittext", undefined, selectedPreset.description);
+            descInput.characters = 30;
+            
+            editDialog.add("statictext", undefined, "프롬프트:");
+            var promptInput = editDialog.add("edittext", undefined, selectedPreset.prompt);
+            promptInput.characters = 30;
+            promptInput.preferredSize.height = 60;
+            
+            editDialog.add("statictext", undefined, "필요한 이미지 개수:");
+            var imageCountGroup = editDialog.add("group");
+            var imageCountRadio1 = imageCountGroup.add("radiobutton", undefined, "1개");
+            var imageCountRadio2 = imageCountGroup.add("radiobutton", undefined, "2개");
+            var imageCountRadioMulti = imageCountGroup.add("radiobutton", undefined, "여러 개");
+            
+            if (selectedPreset.imageCount === 1) imageCountRadio1.value = true;
+            else if (selectedPreset.imageCount === 2) imageCountRadio2.value = true;
+            else if (selectedPreset.imageCount === "multiple") imageCountRadioMulti.value = true;
+            
+            var editButtonGroup = editDialog.add("group");
+            editButtonGroup.alignment = "center";
+            var saveEditBtn = editButtonGroup.add("button", undefined, "저장");
+            var cancelEditBtn = editButtonGroup.add("button", undefined, "취소");
+            
+            saveEditBtn.onClick = function() {
+                if (titleInput.text.length === 0) {
+                    alert("제목을 입력해주세요.");
+                    return;
+                }
+                
+                var imageCount = 1;
+                if (imageCountRadio2.value) imageCount = 2;
+                else if (imageCountRadioMulti.value) imageCount = "multiple";
+                
+                if (editUserPreset(
+                    selectedPreset.id,
+                    titleInput.text,
+                    descInput.text || "",
+                    promptInput.text,
+                    imageCount
+                )) {
+                    alert("프리셋이 수정되었습니다!");
+                    updatePresetList();
+                    editDialog.close();
+                } else {
+                    alert("수정 실패");
+                }
+            };
+            
+            cancelEditBtn.onClick = function() {
+                editDialog.close();
+            };
+            
+            editDialog.show();
+        };
+        
+        deleteBtn.onClick = function() {
+            if (confirm("정말로 '" + selectedPreset.title + "' 프리셋을 삭제하시겠습니까?")) {
+                if (deleteUserPreset(selectedPreset.id)) {
+                    alert("프리셋이 삭제되었습니다.");
+                    updatePresetList();
+                    manageDialog.close();
+                } else {
+                    alert("삭제 실패");
+                }
+            }
+        };
+        
+        cancelBtn.onClick = function() {
+            manageDialog.close();
+        };
+        
+        manageDialog.show();
     };
     
     // 프리셋 저장 버튼 클릭
@@ -1449,15 +1619,32 @@ function createDialog() {
     dialog.referenceFiles = [];
     
     addRefButton.onClick = function() {
-        var file = File.openDialog("참조 이미지 선택", "*.jpg;*.jpeg;*.png", true); // true = multiselect
+        // Windows에서는 multiselect를 지원하지 않을 수 있으므로 조건부 처리
+        var fileFilter = CONFIG.IS_WINDOWS ? "Image Files:*.jpg;*.jpeg;*.png" : "*.jpg;*.jpeg;*.png";
+        var allowMultiple = !CONFIG.IS_WINDOWS;
+        var file = File.openDialog("참조 이미지 선택", fileFilter, allowMultiple);
+        
         if (file) {
             // 파일이 배열인지 확인 (멀티 선택)
             var files = file instanceof Array ? file : [file];
             for (var i = 0; i < files.length; i++) {
-                if (files[i].exists) {
+                if (files[i] && files[i].exists) {
                     dialog.referenceFiles.push(files[i]);
-                    refListBox.add("item", files[i].name);
+                    // 한글 파일명 처리
+                    var fileName = files[i].name;
+                    try {
+                        // ExtendScript에서 한글 처리를 위한 방법
+                        fileName = decodeURI(files[i].name);
+                    } catch(e) {
+                        // 디코딩 실패 시 원본 사용
+                    }
+                    refListBox.add("item", fileName);
                 }
+            }
+            
+            // Windows에서 멀티 선택이 안되는 경우 추가 안내
+            if (CONFIG.IS_WINDOWS && allowMultiple === false) {
+                alert("Windows에서는 한 번에 하나의 파일만 선택 가능합니다.\n여러 파일을 추가하려면 '이미지 추가' 버튼을 여러 번 클릭하세요.");
             }
         }
     };
@@ -1730,9 +1917,198 @@ function getColorName(color) {
 // ===== 고급 색상 피커 =====
 
 function createAdvancedColorPicker(initialColor) {
-    var dialog = new Window("dialog", "색상 피커(전경색)");
-    dialog.orientation = "row";
-    dialog.alignChildren = "top";
+    var dialog = new Window("dialog", "색상 선택");
+    dialog.orientation = "column";
+    dialog.alignChildren = "fill";
+    dialog.spacing = 10;
+    dialog.margins = 15;
+    
+    // 초기 색상 설정
+    var currentColor = initialColor || { r: 24, g: 47, b: 44 };
+    var selectedColor = { r: currentColor.r, g: currentColor.g, b: currentColor.b };
+    
+    // 색상 프리뷰 패널
+    var previewPanel = dialog.add("panel", undefined, "색상 미리보기");
+    var previewGroup = previewPanel.add("group");
+    previewGroup.alignment = "fill";
+    
+    // 새로운 색상 표시
+    var newColorDisplay = previewGroup.add("panel");
+    newColorDisplay.preferredSize.width = 200;
+    newColorDisplay.preferredSize.height = 50;
+    
+    var hexText = previewGroup.add("statictext", undefined, rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b));
+    hexText.characters = 12;
+    
+    // 색상 값 입력 패널
+    var valuesPanel = dialog.add("panel", undefined, "색상 값");
+    valuesPanel.alignChildren = "fill";
+    valuesPanel.margins = 10;
+    
+    // RGB 입력
+    var rgbGroup = valuesPanel.add("group");
+    rgbGroup.add("statictext", undefined, "R:");
+    var rInput = rgbGroup.add("edittext", undefined, selectedColor.r.toString());
+    rInput.characters = 4;
+    
+    rgbGroup.add("statictext", undefined, "G:");
+    var gInput = rgbGroup.add("edittext", undefined, selectedColor.g.toString());
+    gInput.characters = 4;
+    
+    rgbGroup.add("statictext", undefined, "B:");
+    var bInput = rgbGroup.add("edittext", undefined, selectedColor.b.toString());
+    bInput.characters = 4;
+    
+    // HEX 입력
+    var hexGroup = valuesPanel.add("group");
+    hexGroup.add("statictext", undefined, "#");
+    var hexInput = hexGroup.add("edittext", undefined, rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b).substring(1));
+    hexInput.characters = 8;
+    
+    // HSB 슬라이더
+    var hsbPanel = dialog.add("panel", undefined, "색상 조정");
+    hsbPanel.alignChildren = "fill";
+    hsbPanel.margins = 10;
+    
+    var currentHsb = rgbToHsb(selectedColor.r, selectedColor.g, selectedColor.b);
+    
+    // Hue (색상)
+    var hueGroup = hsbPanel.add("group");
+    hueGroup.add("statictext", undefined, "색상:");
+    var hueSlider = hueGroup.add("slider", undefined, currentHsb.h, 0, 360);
+    hueSlider.preferredSize.width = 200;
+    var hueValue = hueGroup.add("statictext", undefined, currentHsb.h.toString() + "°");
+    hueValue.characters = 5;
+    
+    // Saturation (채도)
+    var satGroup = hsbPanel.add("group");
+    satGroup.add("statictext", undefined, "채도:");
+    var satSlider = satGroup.add("slider", undefined, currentHsb.s, 0, 100);
+    satSlider.preferredSize.width = 200;
+    var satValue = satGroup.add("statictext", undefined, currentHsb.s.toString() + "%");
+    satValue.characters = 5;
+    
+    // Brightness (명도)
+    var briGroup = hsbPanel.add("group");
+    briGroup.add("statictext", undefined, "명도:");
+    var briSlider = briGroup.add("slider", undefined, currentHsb.b, 0, 100);
+    briSlider.preferredSize.width = 200;
+    var briValue = briGroup.add("statictext", undefined, currentHsb.b.toString() + "%");
+    briValue.characters = 5;
+    
+    // 버튼
+    var buttonGroup = dialog.add("group");
+    buttonGroup.alignment = "center";
+    var okButton = buttonGroup.add("button", undefined, "확인");
+    var cancelButton = buttonGroup.add("button", undefined, "취소");
+    
+    // 색상 업데이트 함수
+    function updateFromRgb() {
+        var r = parseInt(rInput.text) || 0;
+        var g = parseInt(gInput.text) || 0;
+        var b = parseInt(bInput.text) || 0;
+        
+        r = Math.max(0, Math.min(255, r));
+        g = Math.max(0, Math.min(255, g));
+        b = Math.max(0, Math.min(255, b));
+        
+        selectedColor = { r: r, g: g, b: b };
+        currentHsb = rgbToHsb(r, g, b);
+        
+        // HEX 업데이트
+        hexInput.text = rgbToHex(r, g, b).substring(1);
+        hexText.text = rgbToHex(r, g, b);
+        
+        // HSB 슬라이더 업데이트
+        hueSlider.value = currentHsb.h;
+        satSlider.value = currentHsb.s;
+        briSlider.value = currentHsb.b;
+        hueValue.text = currentHsb.h.toString() + "°";
+        satValue.text = currentHsb.s.toString() + "%";
+        briValue.text = currentHsb.b.toString() + "%";
+        
+        updatePreview();
+    }
+    
+    function updateFromHex() {
+        var hex = hexInput.text.replace(/[^0-9A-Fa-f]/g, '');
+        if (hex.length === 6) {
+            var rgb = hexToRgb("#" + hex);
+            selectedColor = rgb;
+            
+            // RGB 필드 업데이트
+            rInput.text = rgb.r.toString();
+            gInput.text = rgb.g.toString();
+            bInput.text = rgb.b.toString();
+            
+            updateFromRgb();
+        }
+    }
+    
+    function updateFromHsb() {
+        var h = hueSlider.value;
+        var s = satSlider.value;
+        var b = briSlider.value;
+        
+        currentHsb = { h: h, s: s, b: b };
+        selectedColor = hsbToRgb(h, s, b);
+        
+        // RGB 필드 업데이트
+        rInput.text = selectedColor.r.toString();
+        gInput.text = selectedColor.g.toString();
+        bInput.text = selectedColor.b.toString();
+        
+        // HEX 업데이트
+        hexInput.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b).substring(1);
+        hexText.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b);
+        
+        // HSB 텍스트 업데이트
+        hueValue.text = Math.round(h).toString() + "°";
+        satValue.text = Math.round(s).toString() + "%";
+        briValue.text = Math.round(b).toString() + "%";
+        
+        updatePreview();
+    }
+    
+    function updatePreview() {
+        try {
+            var g = newColorDisplay.graphics;
+            var brush = g.newBrush(g.BrushType.SOLID_COLOR, [selectedColor.r/255, selectedColor.g/255, selectedColor.b/255]);
+            g.backgroundColor = brush;
+        } catch(e) {}
+    }
+    
+    // 이벤트 핸들러
+    rInput.onChange = gInput.onChange = bInput.onChange = updateFromRgb;
+    hexInput.onChange = updateFromHex;
+    hueSlider.onChanging = satSlider.onChanging = briSlider.onChanging = updateFromHsb;
+    
+    // 초기 프리뷰 업데이트
+    updatePreview();
+    
+    // 버튼 이벤트
+    okButton.onClick = function() {
+        dialog.close(1);
+    };
+    
+    cancelButton.onClick = function() {
+        dialog.close(0);
+    };
+    
+    // 다이얼로그 표시
+    if (dialog.show() === 1) {
+        return selectedColor;
+    }
+    return null;
+}
+
+// (이전 createAdvancedColorPicker 함수는 제거됨)
+
+/* 이전 버전 제거 - 새로운 간소화된 버전 사용
+function createAdvancedColorPicker_old(initialColor) {
+    var dialog = new Window("dialog", "색상 선택");
+    dialog.orientation = "column";
+    dialog.alignChildren = "fill";
     dialog.spacing = 10;
     dialog.margins = 15;
     
@@ -1741,39 +2117,19 @@ function createAdvancedColorPicker(initialColor) {
     var currentHsb = rgbToHsb(currentColor.r, currentColor.g, currentColor.b);
     var selectedColor = { r: currentColor.r, g: currentColor.g, b: currentColor.b };
     
-    // 왼쪽 컨테이너 (색상 패널과 Hue 슬라이더)
-    var leftContainer = dialog.add("group");
-    leftContainer.orientation = "row";
-    leftContainer.spacing = 10;
+    // 색상 프리뷰 패널
+    var previewPanel = dialog.add("panel", undefined, "색상 미리보기");
+    previewPanel.preferredSize.height = 60;
+    var previewGroup = previewPanel.add("group");
+    previewGroup.orientation = "row";
     
-    // 2D 색상 패널 (Saturation vs Brightness)
-    var colorPanel = leftContainer.add("panel");
-    colorPanel.preferredSize.width = 256;
-    colorPanel.preferredSize.height = 256;
+    // 현재 색상
+    var currentColorPanel = previewGroup.add("panel", undefined, "현재");
+    currentColorPanel.preferredSize.width = 100;
+    currentColorPanel.preferredSize.height = 40;
     
-    // 색상 선택 인디케이터
-    var indicator = {
-        x: (currentHsb.s / 100) * 256,
-        y: ((100 - currentHsb.b) / 100) * 256
-    };
-    
-    // Hue 슬라이더 (수직)
-    var hueContainer = leftContainer.add("group");
-    hueContainer.orientation = "column";
-    hueContainer.alignChildren = "fill";
-    
-    var huePanel = hueContainer.add("panel");
-    huePanel.preferredSize.width = 30;
-    huePanel.preferredSize.height = 256;
-    
-    // 오른쪽 컨테이너 (색상 값과 프리뷰)
-    var rightContainer = dialog.add("group");
-    rightContainer.orientation = "column";
-    rightContainer.alignChildren = "fill";
-    rightContainer.spacing = 10;
-    
-    // 색상 프리뷰
-    var previewGroup = rightContainer.add("panel", undefined, "새로운 색");
+    // 새로운 색상
+    var newColorPanel = previewGroup.add("panel", undefined, "새로운 색");
     previewGroup.preferredSize.width = 200;
     previewGroup.preferredSize.height = 60;
     
@@ -1977,10 +2333,10 @@ function createAdvancedColorPicker(initialColor) {
         } catch(e) {}
     }
     
-    function drawColorPanel() {
-        colorPanel.onDraw = function() {
-            try {
-                var g = this.graphics;
+    // 색상 패널 그리기 함수
+    colorPanel.onDraw = function() {
+        try {
+            var g = this.graphics;
                 
                 // 간단한 그라디언트 시뮬레이션 (성능을 위해 샘플링)
                 var step = 8;
@@ -2003,14 +2359,20 @@ function createAdvancedColorPicker(initialColor) {
                 pen = g.newPen(g.PenType.SOLID_COLOR, [0, 0, 0], 1);
                 g.strokePath(pen, [[indicator.x - 7, indicator.y], [indicator.x + 7, indicator.y]]);
                 g.strokePath(pen, [[indicator.x, indicator.y - 7], [indicator.x, indicator.y + 7]]);
-            } catch(e) {}
-        };
+        } catch(e) {}
+    };
+    
+    function drawColorPanel() {
+        if (colorPanel.visible) {
+            colorPanel.graphics = colorPanel.graphics || colorPanel.graphics.newGraphics();
+            colorPanel.onDraw();
+        }
     }
     
-    function drawHuePanel() {
-        huePanel.onDraw = function() {
-            try {
-                var g = this.graphics;
+    // Hue 패널 그리기 함수
+    huePanel.onDraw = function() {
+        try {
+            var g = this.graphics;
                 
                 // Hue 그라디언트 그리기
                 for (var y = 0; y < 256; y += 2) {
@@ -2025,8 +2387,14 @@ function createAdvancedColorPicker(initialColor) {
                 var hueY = (currentHsb.h / 360) * 256;
                 var pen = g.newPen(g.PenType.SOLID_COLOR, [1, 1, 1], 2);
                 g.strokePath(pen, [[0, hueY], [30, hueY]]);
-            } catch(e) {}
-        };
+        } catch(e) {}
+    };
+    
+    function drawHuePanel() {
+        if (huePanel.visible) {
+            huePanel.graphics = huePanel.graphics || huePanel.graphics.newGraphics();
+            huePanel.onDraw();
+        }
     }
     
     // 이벤트 핸들러
@@ -2059,10 +2427,17 @@ function createAdvancedColorPicker(initialColor) {
     rInput.onChange = gInput.onChange = bRgbInput.onChange = updateColorFromRgb;
     hexInput.onChange = updateColorFromHex;
     
-    // 초기 그리기
-    drawColorPanel();
-    drawHuePanel();
-    updatePreview();
+    // 초기 그리기 - 패널들이 표시된 후에 실행
+    dialog.onShow = function() {
+        try {
+            // 초기 색상 프리뷰 업데이트
+            newColorPanel.graphics.backgroundColor = newColorPanel.graphics.newBrush(
+                newColorPanel.graphics.BrushType.SOLID_COLOR, 
+                [selectedColor.r/255, selectedColor.g/255, selectedColor.b/255]
+            );
+            currentColorText.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b);
+        } catch(e) {}
+    };
     
     // 버튼 이벤트
     okButton.onClick = function() {
@@ -2079,6 +2454,7 @@ function createAdvancedColorPicker(initialColor) {
     }
     return null;
 }
+*/
 
 // ===== 헬퍼 함수 =====
 
@@ -2496,6 +2872,120 @@ SmartUpdater.prototype.showRestartDialog = function(updateInfo) {
     dialog.show();
 };
 
+// 수동 업데이트 확인 함수
+function checkForManualUpdate() {
+    try {
+        // 업데이트 확인 중 표시
+        var checkingDialog = new Window("palette", "업데이트 확인");
+        checkingDialog.orientation = "column";
+        checkingDialog.alignChildren = "center";
+        checkingDialog.preferredSize.width = 250;
+        checkingDialog.margins = 15;
+        
+        var msg = checkingDialog.add("statictext", undefined, "업데이트를 확인하는 중...");
+        checkingDialog.show();
+        
+        // SmartUpdater 인스턴스 생성 및 업데이트 확인
+        var updater = new SmartUpdater();
+        var updateInfo = updater.checkForUpdate();
+        
+        checkingDialog.close();
+        
+        if (updateInfo) {
+            // 새 버전이 있는 경우
+            showUpdateDialog(updateInfo, updater);
+        } else {
+            // 최신 버전인 경우
+            var latestDialog = new Window("dialog", "업데이트 확인");
+            latestDialog.orientation = "column";
+            latestDialog.alignChildren = "center";
+            latestDialog.preferredSize.width = 300;
+            latestDialog.margins = 15;
+            latestDialog.spacing = 10;
+            
+            var icon = latestDialog.add("statictext", undefined, "✓");
+            icon.graphics.font = ScriptUI.newFont(icon.graphics.font.name, ScriptUI.FontStyle.BOLD, 24);
+            icon.graphics.foregroundColor = icon.graphics.newPen(icon.graphics.PenType.SOLID_COLOR, [0, 0.7, 0], 1);
+            
+            var msgText = latestDialog.add("statictext", undefined, "최신 버전입니다!");
+            msgText.graphics.font = ScriptUI.newFont(msgText.graphics.font.name, ScriptUI.FontStyle.BOLD, 14);
+            
+            var versionText = latestDialog.add("statictext", undefined, "현재 버전: v" + PLUGIN_VERSION);
+            versionText.graphics.font = ScriptUI.newFont(versionText.graphics.font.name, ScriptUI.FontStyle.REGULAR, 12);
+            
+            var okBtn = latestDialog.add("button", undefined, "확인");
+            okBtn.preferredSize.width = 100;
+            okBtn.onClick = function() { latestDialog.close(); };
+            
+            latestDialog.show();
+        }
+    } catch(e) {
+        alert("업데이트 확인 중 오류가 발생했습니다:\n" + e.message);
+    }
+}
+
+// 업데이트 대화상자 개선
+function showUpdateDialog(updateInfo, updater) {
+    var dialog = new Window("dialog", "업데이트 가능!");
+    dialog.orientation = "column";
+    dialog.alignChildren = "center";
+    dialog.preferredSize.width = 400;
+    dialog.margins = 15;
+    dialog.spacing = 10;
+    
+    // 업데이트 아이콘
+    var icon = dialog.add("statictext", undefined, "⬇");
+    icon.graphics.font = ScriptUI.newFont(icon.graphics.font.name, ScriptUI.FontStyle.BOLD, 24);
+    
+    // 제목
+    var title = dialog.add("statictext", undefined, "새 버전을 사용할 수 있습니다!");
+    title.graphics.font = ScriptUI.newFont(title.graphics.font.name, ScriptUI.FontStyle.BOLD, 14);
+    
+    // 버전 정보 패널
+    var versionPanel = dialog.add("panel");
+    versionPanel.orientation = "column";
+    versionPanel.alignChildren = "fill";
+    versionPanel.margins = 10;
+    versionPanel.preferredSize.width = 350;
+    
+    var currentVersion = versionPanel.add("statictext", undefined, "현재 버전: v" + updateInfo.currentVersion);
+    var newVersion = versionPanel.add("statictext", undefined, "새 버전: v" + updateInfo.newVersion);
+    newVersion.graphics.font = ScriptUI.newFont(newVersion.graphics.font.name, ScriptUI.FontStyle.BOLD, 12);
+    
+    // 변경 사항
+    if (updateInfo.changelog) {
+        var changelogPanel = dialog.add("panel", undefined, "변경 사항");
+        changelogPanel.alignChildren = "fill";
+        changelogPanel.margins = 10;
+        changelogPanel.preferredSize.width = 350;
+        changelogPanel.preferredSize.height = 100;
+        
+        var changelogText = changelogPanel.add("edittext", undefined, updateInfo.changelog, {multiline: true, readonly: true});
+        changelogText.preferredSize.height = 80;
+    }
+    
+    // 버튼
+    var buttonGroup = dialog.add("group");
+    buttonGroup.alignment = "center";
+    
+    var updateBtn = buttonGroup.add("button", undefined, "지금 업데이트");
+    updateBtn.preferredSize.width = 120;
+    
+    var laterBtn = buttonGroup.add("button", undefined, "나중에");
+    laterBtn.preferredSize.width = 80;
+    
+    updateBtn.onClick = function() {
+        dialog.close();
+        updater.performUpdate(updateInfo);
+    };
+    
+    laterBtn.onClick = function() {
+        dialog.close();
+    };
+    
+    dialog.show();
+}
+
 function checkForUpdatesAsync() {
     if (!AUTO_UPDATE_ENABLED) return;
     
@@ -2513,7 +3003,7 @@ function checkForUpdatesAsync() {
         }
         
         var now = new Date().getTime();
-        var checkInterval = 86400000; // 24시간
+        var checkInterval = 1000; // 1초 (테스트용, 원래는 86400000)
         
         if ((now - lastCheck) > checkInterval) {
             var updater = new SmartUpdater();

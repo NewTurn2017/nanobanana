@@ -257,13 +257,69 @@ function loadSessionData() {
     return null;
 }
 
-// ===== 사용자 프리셋 관리 =====
+// ===== 사용자 프리셋 및 카테고리 관리 =====
 function getUserPresetsFile() {
     var userDataFolder = new Folder(Folder.userData + "/NanoBanana");
     if (!userDataFolder.exists) {
         userDataFolder.create();
     }
     return new File(userDataFolder + "/user_presets.json");
+}
+
+function getUserCategoriesFile() {
+    var userDataFolder = new Folder(Folder.userData + "/NanoBanana");
+    if (!userDataFolder.exists) {
+        userDataFolder.create();
+    }
+    return new File(userDataFolder + "/user_categories.json");
+}
+
+function getSharedPresetsFolder() {
+    var userDataFolder = new Folder(Folder.userData + "/NanoBanana");
+    if (!userDataFolder.exists) {
+        userDataFolder.create();
+    }
+    var sharedFolder = new Folder(userDataFolder + "/shared");
+    if (!sharedFolder.exists) {
+        sharedFolder.create();
+    }
+    return sharedFolder;
+}
+
+function loadUserCategories() {
+    var file = getUserCategoriesFile();
+    if (file.exists) {
+        try {
+            file.open("r");
+            file.encoding = "UTF-8";
+            var content = file.read();
+            file.close();
+            if (content) {
+                return eval('(' + content + ')');
+            }
+        } catch(e) {}
+    }
+    // 기본 카테고리
+    return ['나의 작업', '즐겨찾기', '테스트'];
+}
+
+function saveUserCategories(categories) {
+    var file = getUserCategoriesFile();
+    try {
+        file.open("w");
+        file.encoding = "UTF-8";
+        var json = "[";
+        for (var i = 0; i < categories.length; i++) {
+            if (i > 0) json += ",";
+            json += '"' + escapeJsonString(categories[i]) + '"';
+        }
+        json += "]";
+        file.write(json);
+        file.close();
+        return true;
+    } catch(e) {
+        return false;
+    }
 }
 
 function loadUserPresets() {
@@ -335,7 +391,14 @@ function saveUserPresets(userPresets) {
             json += '    "description": "' + escapeJsonString(preset.description) + '",\n';
             json += '    "prompt": "' + escapeJsonString(preset.prompt) + '",\n';
             json += '    "imageCount": ' + (typeof preset.imageCount === 'string' ? '"' + preset.imageCount + '"' : preset.imageCount) + ',\n';
-            json += '    "category": "' + preset.category + '"\n';
+            json += '    "category": "' + escapeJsonString(preset.category) + '"';
+            if (preset.isUserPreset) {
+                json += ',\n    "isUserPreset": true';
+            }
+            if (preset.originalId) {
+                json += ',\n    "originalId": "' + preset.originalId + '"';
+            }
+            json += '\n';
             json += "  }";
         }
         json += "\n]";
@@ -348,7 +411,7 @@ function saveUserPresets(userPresets) {
     }
 }
 
-function addUserPreset(title, description, prompt, imageCount, category) {
+function addUserPreset(title, description, prompt, imageCount, category, originalId) {
     var userPresets = loadUserPresets();
     var newPreset = {
         id: 'user_' + new Date().getTime(),
@@ -356,13 +419,173 @@ function addUserPreset(title, description, prompt, imageCount, category) {
         description: description,
         prompt: prompt,
         imageCount: imageCount,
-        category: category || '사용자'
+        category: category || '나의 작업',
+        isUserPreset: true
     };
+    
+    // 추천 프리셋에서 복사된 경우 원본 ID 저장
+    if (originalId) {
+        newPreset.originalId = originalId;
+    }
+    
     userPresets.push(newPreset);
     if (saveUserPresets(userPresets)) {
         return newPreset;
     }
     return null;
+}
+
+// 추천 프리셋을 사용자 프리셋으로 복사
+function copyPresetToUser(preset, newCategory) {
+    return addUserPreset(
+        preset.title,
+        preset.description,
+        preset.prompt,
+        preset.imageCount,
+        newCategory || '나의 작업',
+        preset.id
+    );
+}
+
+// ===== 프리셋 공유 기능 =====
+function exportUserPresets(presets, filename) {
+    try {
+        var sharedFolder = getSharedPresetsFolder();
+        var exportFile = new File(sharedFolder + "/" + filename);
+        
+        exportFile.open("w");
+        exportFile.encoding = "UTF-8";
+        
+        // ExtendScript에서 날짜 문자열 생성
+        var now = new Date();
+        var dateStr = now.getFullYear() + "-" + 
+                     ("0" + (now.getMonth() + 1)).slice(-2) + "-" + 
+                     ("0" + now.getDate()).slice(-2) + " " +
+                     ("0" + now.getHours()).slice(-2) + ":" +
+                     ("0" + now.getMinutes()).slice(-2) + ":" +
+                     ("0" + now.getSeconds()).slice(-2);
+        
+        var exportData = {
+            version: "1.0",
+            exportDate: dateStr,
+            presets: presets,
+            categories: loadUserCategories()
+        };
+        
+        // JSON 문자열로 변환
+        var json = "{\n";
+        json += '  "version": "' + exportData.version + '",\n';
+        json += '  "exportDate": "' + exportData.exportDate + '",\n';
+        json += '  "categories": [';
+        
+        // 카테고리 배열 수동 생성
+        for (var i = 0; i < exportData.categories.length; i++) {
+            if (i > 0) json += ', ';
+            json += '"' + escapeJsonString(exportData.categories[i]) + '"';
+        }
+        json += '],\n';
+        json += '  "presets": [\n';
+        
+        for (var i = 0; i < presets.length; i++) {
+            if (i > 0) json += ",\n";
+            var preset = presets[i];
+            json += "    {\n";
+            json += '      "id": "' + preset.id + '",\n';
+            json += '      "title": "' + escapeJsonString(preset.title) + '",\n';
+            json += '      "description": "' + escapeJsonString(preset.description) + '",\n';
+            json += '      "prompt": "' + escapeJsonString(preset.prompt) + '",\n';
+            json += '      "imageCount": ' + (typeof preset.imageCount === 'string' ? '"' + preset.imageCount + '"' : preset.imageCount) + ',\n';
+            json += '      "category": "' + escapeJsonString(preset.category) + '"\n';
+            json += "    }";
+        }
+        
+        json += "\n  ]\n}";
+        exportFile.write(json);
+        exportFile.close();
+        
+        return exportFile.fsName;
+    } catch(e) {
+        alert("내보내기 실패: " + e.message);
+        return null;
+    }
+}
+
+function importUserPresets(filename) {
+    try {
+        var sharedFolder = getSharedPresetsFolder();
+        var importFile = new File(sharedFolder + "/" + filename);
+        
+        if (!importFile.exists) {
+            // 전체 경로로 시도
+            importFile = new File(filename);
+            if (!importFile.exists) {
+                alert("파일을 찾을 수 없습니다: " + filename);
+                return false;
+            }
+        }
+        
+        importFile.open("r");
+        importFile.encoding = "UTF-8";
+        var content = importFile.read();
+        importFile.close();
+        
+        var importData = eval('(' + content + ')');
+        
+        // 현재 사용자 프리셋과 카테고리 로드
+        var currentPresets = loadUserPresets();
+        var currentCategories = loadUserCategories();
+        
+        // 새 카테고리 병합
+        if (importData.categories) {
+            for (var i = 0; i < importData.categories.length; i++) {
+                var cat = importData.categories[i];
+                var exists = false;
+                for (var j = 0; j < currentCategories.length; j++) {
+                    if (currentCategories[j] === cat) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    currentCategories.push(cat);
+                }
+            }
+            saveUserCategories(currentCategories);
+        }
+        
+        // 프리셋 병합 (중복 체크)
+        var imported = 0;
+        for (var i = 0; i < importData.presets.length; i++) {
+            var newPreset = importData.presets[i];
+            var isDuplicate = false;
+            
+            // 제목과 프롬프트로 중복 체크
+            for (var j = 0; j < currentPresets.length; j++) {
+                if (currentPresets[j].title === newPreset.title && 
+                    currentPresets[j].prompt === newPreset.prompt) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (!isDuplicate) {
+                // 새 ID 생성 (충돌 방지)
+                newPreset.id = 'user_' + new Date().getTime() + '_' + i;
+                newPreset.isUserPreset = true;
+                currentPresets.push(newPreset);
+                imported++;
+            }
+        }
+        
+        if (saveUserPresets(currentPresets)) {
+            return imported;
+        }
+        
+        return 0;
+    } catch(e) {
+        alert("가져오기 실패: " + e.message);
+        return 0;
+    }
 }
 
 // ===== 진행 상황 창 =====
@@ -1424,15 +1647,35 @@ function createDialog() {
         manageDialog.show();
     };
     
-    // 프리셋 선택 패널 (로드된 프리셋 수 표시)
+    // 프리셋 선택 패널 (탭 구조)
     var presetTitle = "프리셋 선택";
-    if (PRESETS.length > 10) {
-        presetTitle += " (" + PRESETS.length + "개 로드됨)";
-    }
     var presetPanel = dialog.add("panel", undefined, presetTitle);
     presetPanel.alignChildren = "fill";
     presetPanel.margins = 10;
     presetPanel.spacing = 8;
+    
+    // 탭 그룹 생성
+    var tabGroup = presetPanel.add("group");
+    tabGroup.alignment = "fill";
+    
+    var recommendedTabBtn = tabGroup.add("button", undefined, "추천 프리셋 (" + PRESETS.length + ")");
+    recommendedTabBtn.preferredSize.width = 150;
+    var userTabBtn = tabGroup.add("button", undefined, "사용자 프리셋");
+    userTabBtn.preferredSize.width = 150;
+    
+    // 현재 활성 탭 상태
+    var activeTab = "recommended"; // "recommended" or "user"
+    
+    // 탭 스타일 업데이트 함수
+    function updateTabStyles() {
+        if (activeTab === "recommended") {
+            recommendedTabBtn.enabled = false;
+            userTabBtn.enabled = true;
+        } else {
+            recommendedTabBtn.enabled = true;
+            userTabBtn.enabled = false;
+        }
+    }
     
     // 검색 및 카테고리 행
     var searchRow = presetPanel.add("group");
@@ -1465,20 +1708,42 @@ function createDialog() {
     var applyPresetButton = presetButtonGroup.add("button", undefined, "프리셋 적용");
     applyPresetButton.enabled = false;
     
+    // 추천 탭 전용 버튼
+    var copyToUserButton = presetButtonGroup.add("button", undefined, "사용자 프리셋으로 복사");
+    copyToUserButton.enabled = false;
+    copyToUserButton.visible = true; // 초기값: 추천 탭 활성
+    
+    // 사용자 탭 전용 버튼들
     var savePresetButton = presetButtonGroup.add("button", undefined, "현재 프롬프트 저장");
     savePresetButton.enabled = false;
+    savePresetButton.visible = false; // 초기값: 숨김
     
     var managePresetsButton = presetButtonGroup.add("button", undefined, "프리셋 관리");
+    managePresetsButton.visible = false; // 초기값: 숨김
+    
+    var categoryButton = presetButtonGroup.add("button", undefined, "카테고리 관리");
+    categoryButton.visible = false; // 초기값: 숨김
+    
+    var shareButton = presetButtonGroup.add("button", undefined, "공유");
+    shareButton.visible = false; // 초기값: 숨김
     
     // 프리셋 목록 업데이트 함수
     function updatePresetList() {
         presetListBox.removeAll();
         var searchTerm = searchInput.text.toLowerCase();
         var selectedCategory = categoryDropdown.selection ? categoryDropdown.selection.text : '전체';
-        var allPresets = getAllPresets(); // 기본 + 사용자 프리셋
         
-        for (var i = 0; i < allPresets.length; i++) {
-            var preset = allPresets[i];
+        var presetsToShow = [];
+        if (activeTab === "recommended") {
+            // 추천 탭: 기본 프리셋만 표시
+            presetsToShow = PRESETS;
+        } else {
+            // 사용자 탭: 사용자 프리셋만 표시
+            presetsToShow = loadUserPresets();
+        }
+        
+        for (var i = 0; i < presetsToShow.length; i++) {
+            var preset = presetsToShow[i];
             var matchesSearch = !searchTerm || 
                 preset.title.toLowerCase().indexOf(searchTerm) !== -1 ||
                 preset.description.toLowerCase().indexOf(searchTerm) !== -1 ||
@@ -1487,8 +1752,8 @@ function createDialog() {
             
             if (matchesSearch && matchesCategory) {
                 var displayName = preset.title;
-                if (preset.id && preset.id.indexOf('user_') === 0) {
-                    displayName = "★ " + displayName; // 사용자 프리셋 표시
+                if (preset.originalId) {
+                    displayName = "📋 " + displayName; // 복사된 프리셋 표시
                 }
                 var item = presetListBox.add("item", displayName + " (" + preset.category + ")");
                 item.presetData = preset;
@@ -1497,11 +1762,79 @@ function createDialog() {
         
         descriptionText.text = "프리셋을 선택하면 설명이 표시됩니다.";
         applyPresetButton.enabled = false;
+        copyToUserButton.enabled = false;
+    }
+    
+    // 카테고리 드롭다운 업데이트 함수
+    function updateCategoryDropdown() {
+        categoryDropdown.removeAll();
+        
+        if (activeTab === "recommended") {
+            // 추천 탭: 기본 카테고리
+            var categories = ['전체'];
+            var categorySet = {};
+            for (var i = 0; i < PRESETS.length; i++) {
+                if (PRESETS[i].category) {
+                    categorySet[PRESETS[i].category] = true;
+                }
+            }
+            for (var cat in categorySet) {
+                categories.push(cat);
+            }
+            
+            for (var i = 0; i < categories.length; i++) {
+                categoryDropdown.add("item", categories[i]);
+            }
+        } else {
+            // 사용자 탭: 사용자 카테고리
+            var userCategories = loadUserCategories();
+            categoryDropdown.add("item", "전체");
+            for (var i = 0; i < userCategories.length; i++) {
+                categoryDropdown.add("item", userCategories[i]);
+            }
+        }
+        
+        categoryDropdown.selection = 0;
     }
     
     // 이벤트 핸들러
     searchInput.onChanging = updatePresetList;
     categoryDropdown.onChange = updatePresetList;
+    
+    // 탭 버튼 클릭 이벤트
+    recommendedTabBtn.onClick = function() {
+        activeTab = "recommended";
+        updateTabStyles();
+        
+        // 버튼 표시/숨김
+        copyToUserButton.visible = true;
+        savePresetButton.visible = false;
+        managePresetsButton.visible = false;
+        categoryButton.visible = false;
+        shareButton.visible = false;
+        
+        // 사용자 프리셋 수 업데이트
+        var userPresets = loadUserPresets();
+        userTabBtn.text = "사용자 프리셋 (" + userPresets.length + ")";
+        
+        updateCategoryDropdown();
+        updatePresetList();
+    };
+    
+    userTabBtn.onClick = function() {
+        activeTab = "user";
+        updateTabStyles();
+        
+        // 버튼 표시/숨김
+        copyToUserButton.visible = false;
+        savePresetButton.visible = true;
+        managePresetsButton.visible = true;
+        categoryButton.visible = true;
+        shareButton.visible = true;
+        
+        updateCategoryDropdown();
+        updatePresetList();
+    };
     
     presetListBox.onChange = function() {
         if (presetListBox.selection && presetListBox.selection.presetData) {
@@ -1509,6 +1842,11 @@ function createDialog() {
             descriptionText.text = preset.description + "\n필요 이미지: " + 
                 (preset.imageCount === 'multiple' ? '여러 개' : preset.imageCount + '개');
             applyPresetButton.enabled = true;
+            
+            // 추천 탭에서만 복사 버튼 활성화
+            if (activeTab === "recommended") {
+                copyToUserButton.enabled = true;
+            }
         }
     };
     
@@ -1516,9 +1854,20 @@ function createDialog() {
     var promptGroup = dialog.add("panel", undefined, "프롬프트:");
     promptGroup.alignChildren = "fill";
     promptGroup.margins = 10;
-    dialog.promptInput = promptGroup.add("edittext", undefined, sessionData.prompt || "");
-    dialog.promptInput.characters = 60;
+    
+    // 프롬프트 입력 필드와 버튼을 위한 그룹
+    var promptInputGroup = promptGroup.add("group");
+    promptInputGroup.alignment = "fill";
+    
+    dialog.promptInput = promptInputGroup.add("edittext", undefined, sessionData.prompt || "");
+    dialog.promptInput.characters = 50;
     dialog.promptInput.active = true;
+    
+    // 프롬프트를 프리셋으로 저장하는 버튼
+    var addPresetBtn = promptInputGroup.add("button", undefined, "+");
+    addPresetBtn.preferredSize.width = 30;
+    addPresetBtn.helpTip = "현재 프롬프트를 사용자 프리셋으로 추가";
+    addPresetBtn.enabled = false;
     
     dialog.promptInput.addEventListener('keydown', function(e) {
         if (e.keyName == 'Enter') {
@@ -1527,9 +1876,11 @@ function createDialog() {
         }
     });
     
-    // 프롬프트 입력 변경 시 저장 버튼 활성화
+    // 프롬프트 입력 변경 시 버튼 활성화
     dialog.promptInput.onChanging = function() {
-        savePresetButton.enabled = dialog.promptInput.text.length > 0;
+        var hasText = dialog.promptInput.text.length > 0;
+        savePresetButton.enabled = hasText;
+        addPresetBtn.enabled = hasText;
     };
     
     // 프리셋 적용 버튼 클릭
@@ -1548,6 +1899,116 @@ function createDialog() {
             // imageCount 정보를 dialog에 저장
             dialog.presetImageCount = preset.imageCount;
         }
+    };
+    
+    // 사용자 프리셋으로 복사 버튼 클릭
+    copyToUserButton.onClick = function() {
+        if (!presetListBox.selection || !presetListBox.selection.presetData) {
+            alert("복사할 프리셋을 선택해주세요.");
+            return;
+        }
+        
+        var preset = presetListBox.selection.presetData;
+        
+        // 복사 대화상자
+        var copyDialog = new Window("dialog", "사용자 프리셋으로 복사");
+        copyDialog.orientation = "column";
+        copyDialog.alignChildren = "fill";
+        copyDialog.margins = 15;
+        copyDialog.spacing = 10;
+        
+        copyDialog.add("statictext", undefined, "원본: " + preset.title);
+        
+        copyDialog.add("statictext", undefined, "제목:");
+        var titleInput = copyDialog.add("edittext", undefined, preset.title);
+        titleInput.characters = 30;
+        titleInput.active = true;
+        
+        copyDialog.add("statictext", undefined, "설명:");
+        var descInput = copyDialog.add("edittext", undefined, preset.description);
+        descInput.characters = 30;
+        
+        copyDialog.add("statictext", undefined, "카테고리:");
+        var categoryDropdown = copyDialog.add("dropdownlist", undefined, loadUserCategories());
+        categoryDropdown.selection = 0;
+        
+        // 새 카테고리 추가 옵션
+        var newCategoryGroup = copyDialog.add("group");
+        var newCategoryCheckbox = newCategoryGroup.add("checkbox", undefined, "새 카테고리:");
+        var newCategoryInput = newCategoryGroup.add("edittext", undefined, "");
+        newCategoryInput.characters = 20;
+        newCategoryInput.enabled = false;
+        
+        newCategoryCheckbox.onClick = function() {
+            newCategoryInput.enabled = newCategoryCheckbox.value;
+            categoryDropdown.enabled = !newCategoryCheckbox.value;
+        };
+        
+        var buttonGroup = copyDialog.add("group");
+        buttonGroup.alignment = "center";
+        var copyBtn = buttonGroup.add("button", undefined, "복사");
+        var cancelBtn = buttonGroup.add("button", undefined, "취소");
+        
+        copyBtn.onClick = function() {
+            if (titleInput.text.length === 0) {
+                alert("제목을 입력해주세요.");
+                return;
+            }
+            
+            var targetCategory;
+            if (newCategoryCheckbox.value && newCategoryInput.text.length > 0) {
+                // 새 카테고리 추가
+                targetCategory = newCategoryInput.text;
+                var categories = loadUserCategories();
+                var exists = false;
+                for (var i = 0; i < categories.length; i++) {
+                    if (categories[i] === targetCategory) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    categories.push(targetCategory);
+                    saveUserCategories(categories);
+                }
+            } else {
+                targetCategory = categoryDropdown.selection ? categoryDropdown.selection.text : '나의 작업';
+            }
+            
+            var newPreset = addUserPreset(
+                titleInput.text,
+                descInput.text || preset.description,
+                preset.prompt,
+                preset.imageCount,
+                targetCategory,
+                preset.id
+            );
+            
+            if (newPreset) {
+                alert("프리셋이 사용자 프리셋으로 복사되었습니다!");
+                
+                // 사용자 탭으로 자동 전환
+                activeTab = "user";
+                updateTabStyles();
+                copyToUserButton.visible = false;
+                savePresetButton.visible = true;
+                managePresetsButton.visible = true;
+                categoryButton.visible = true;
+                shareButton.visible = true;
+                
+                updateCategoryDropdown();
+                updatePresetList();
+                copyDialog.close();
+            } else {
+                alert("복사 실패");
+            }
+        };
+        
+        cancelBtn.onClick = function() {
+            copyDialog.close();
+        };
+        
+        copyDialog.show();
     };
     
     // 프리셋 관리 버튼 클릭
@@ -1664,15 +2125,238 @@ function createDialog() {
         manageDialog.show();
     };
     
-    // 프리셋 저장 버튼 클릭
-    savePresetButton.onClick = function() {
+    // 카테고리 관리 버튼 클릭
+    categoryButton.onClick = function() {
+        var categoryDialog = new Window("dialog", "카테고리 관리");
+        categoryDialog.orientation = "column";
+        categoryDialog.alignChildren = "fill";
+        categoryDialog.margins = 15;
+        categoryDialog.spacing = 10;
+        
+        categoryDialog.add("statictext", undefined, "사용자 카테고리 목록:");
+        
+        var categoryList = categoryDialog.add("listbox", undefined, []);
+        categoryList.preferredSize.height = 150;
+        
+        var userCategories = loadUserCategories();
+        for (var i = 0; i < userCategories.length; i++) {
+            categoryList.add("item", userCategories[i]);
+        }
+        
+        var buttonGroup = categoryDialog.add("group");
+        buttonGroup.alignment = "fill";
+        
+        var addBtn = buttonGroup.add("button", undefined, "추가");
+        var renameBtn = buttonGroup.add("button", undefined, "이름 변경");
+        var deleteBtn = buttonGroup.add("button", undefined, "삭제");
+        var closeBtn = buttonGroup.add("button", undefined, "닫기");
+        
+        addBtn.onClick = function() {
+            var newCategory = prompt("새 카테고리 이름:", "");
+            if (newCategory && newCategory.length > 0) {
+                var exists = false;
+                for (var i = 0; i < userCategories.length; i++) {
+                    if (userCategories[i] === newCategory) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    userCategories.push(newCategory);
+                    saveUserCategories(userCategories);
+                    categoryList.add("item", newCategory);
+                    alert("카테고리가 추가되었습니다.");
+                } else {
+                    alert("이미 존재하는 카테고리입니다.");
+                }
+            }
+        };
+        
+        renameBtn.onClick = function() {
+            if (!categoryList.selection) {
+                alert("수정할 카테고리를 선택해주세요.");
+                return;
+            }
+            
+            var oldName = categoryList.selection.text;
+            var newName = prompt("새 이름:", oldName);
+            
+            if (newName && newName !== oldName) {
+                var index = -1;
+                for (var i = 0; i < userCategories.length; i++) {
+                    if (userCategories[i] === oldName) {
+                        index = i;
+                        break;
+                    }
+                }
+                
+                if (index !== -1) {
+                    userCategories[index] = newName;
+                    saveUserCategories(userCategories);
+                    
+                    // 해당 카테고리의 프리셋들도 업데이트
+                    var userPresets = loadUserPresets();
+                    for (var i = 0; i < userPresets.length; i++) {
+                        if (userPresets[i].category === oldName) {
+                            userPresets[i].category = newName;
+                        }
+                    }
+                    saveUserPresets(userPresets);
+                    
+                    categoryList.selection.text = newName;
+                    alert("카테고리 이름이 변경되었습니다.");
+                    updateCategoryDropdown();
+                }
+            }
+        };
+        
+        deleteBtn.onClick = function() {
+            if (!categoryList.selection) {
+                alert("삭제할 카테고리를 선택해주세요.");
+                return;
+            }
+            
+            var categoryName = categoryList.selection.text;
+            if (confirm("'" + categoryName + "' 카테고리를 삭제하시겠습니까?\n이 카테고리의 프리셋은 '나의 작업'으로 이동됩니다.")) {
+                var index = -1;
+                for (var i = 0; i < userCategories.length; i++) {
+                    if (userCategories[i] === categoryName) {
+                        index = i;
+                        break;
+                    }
+                }
+                
+                if (index !== -1) {
+                    userCategories.splice(index, 1);
+                    saveUserCategories(userCategories);
+                    
+                    // 해당 카테고리의 프리셋들을 '나의 작업'으로 이동
+                    var userPresets = loadUserPresets();
+                    for (var i = 0; i < userPresets.length; i++) {
+                        if (userPresets[i].category === categoryName) {
+                            userPresets[i].category = '나의 작업';
+                        }
+                    }
+                    saveUserPresets(userPresets);
+                    
+                    categoryList.remove(categoryList.selection);
+                    alert("카테고리가 삭제되었습니다.");
+                    updateCategoryDropdown();
+                    updatePresetList();
+                }
+            }
+        };
+        
+        closeBtn.onClick = function() {
+            categoryDialog.close();
+        };
+        
+        categoryDialog.show();
+    };
+    
+    // 공유 버튼 클릭
+    shareButton.onClick = function() {
+        var shareDialog = new Window("dialog", "프리셋 공유");
+        shareDialog.orientation = "column";
+        shareDialog.alignChildren = "fill";
+        shareDialog.margins = 15;
+        shareDialog.spacing = 10;
+        
+        var buttonGroup = shareDialog.add("group");
+        buttonGroup.alignment = "center";
+        
+        var exportBtn = buttonGroup.add("button", undefined, "내보내기");
+        exportBtn.preferredSize.width = 100;
+        
+        var importBtn = buttonGroup.add("button", undefined, "가져오기");
+        importBtn.preferredSize.width = 100;
+        
+        var closeBtn = buttonGroup.add("button", undefined, "닫기");
+        closeBtn.preferredSize.width = 100;
+        
+        exportBtn.onClick = function() {
+            shareDialog.close();
+            
+            var userPresets = loadUserPresets();
+            if (userPresets.length === 0) {
+                alert("내보낼 사용자 프리셋이 없습니다.");
+                return;
+            }
+            
+            var filename = "my_presets_" + new Date().getTime() + ".nbpreset";
+            var exportPath = exportUserPresets(userPresets, filename);
+            
+            if (exportPath) {
+                // 성공 메시지 대화상자
+                var successDialog = new Window("dialog", "내보내기 완료");
+                successDialog.orientation = "column";
+                successDialog.alignChildren = "fill";
+                successDialog.margins = 15;
+                successDialog.spacing = 10;
+                
+                var messageText = successDialog.add("statictext", undefined, "프리셋이 내보내기되었습니다:", {multiline: true});
+                var pathText = successDialog.add("statictext", undefined, exportPath, {multiline: true});
+                pathText.graphics.font = ScriptUI.newFont(pathText.graphics.font.name, ScriptUI.FontStyle.ITALIC, 10);
+                
+                var buttonGroup = successDialog.add("group");
+                buttonGroup.alignment = "center";
+                
+                var openFolderBtn = buttonGroup.add("button", undefined, "폴더 열기");
+                var okBtn = buttonGroup.add("button", undefined, "확인");
+                
+                openFolderBtn.onClick = function() {
+                    // 폴더 열기
+                    var sharedFolder = getSharedPresetsFolder();
+                    if (CONFIG.IS_WINDOWS) {
+                        // Windows: Explorer로 폴더 열기
+                        app.system('explorer.exe "' + sharedFolder.fsName + '"');
+                    } else {
+                        // macOS: Finder로 폴더 열기
+                        app.system('open "' + sharedFolder.fsName + '"');
+                    }
+                    successDialog.close();
+                };
+                
+                okBtn.onClick = function() {
+                    successDialog.close();
+                };
+                
+                successDialog.show();
+            }
+        };
+        
+        importBtn.onClick = function() {
+            shareDialog.close();
+            
+            var file = File.openDialog("프리셋 파일 선택", "*.nbpreset");
+            if (file) {
+                var imported = importUserPresets(file.fsName);
+                if (imported > 0) {
+                    alert(imported + "개의 프리셋을 가져왔습니다.");
+                    updateCategoryDropdown();
+                    updatePresetList();
+                } else if (imported === 0) {
+                    alert("가져올 새 프리셋이 없습니다. (중복 제외)");
+                }
+            }
+        };
+        
+        closeBtn.onClick = function() {
+            shareDialog.close();
+        };
+        
+        shareDialog.show();
+    };
+    
+    // 프롬프트 추가 버튼 클릭 (+ 버튼)
+    addPresetBtn.onClick = function() {
         if (dialog.promptInput.text.length === 0) {
             alert("먼저 프롬프트를 입력해주세요.");
             return;
         }
         
         // 저장 대화상자
-        var saveDialog = new Window("dialog", "프리셋 저장");
+        var saveDialog = new Window("dialog", "사용자 프리셋으로 추가");
         saveDialog.orientation = "column";
         saveDialog.alignChildren = "fill";
         saveDialog.margins = 15;
@@ -1686,6 +2370,22 @@ function createDialog() {
         saveDialog.add("statictext", undefined, "설명:");
         var descInput = saveDialog.add("edittext", undefined, "");
         descInput.characters = 30;
+        
+        saveDialog.add("statictext", undefined, "카테고리:");
+        var categoryDropdown = saveDialog.add("dropdownlist", undefined, loadUserCategories());
+        categoryDropdown.selection = 0;
+        
+        // 새 카테고리 추가 옵션
+        var newCategoryGroup = saveDialog.add("group");
+        var newCategoryCheckbox = newCategoryGroup.add("checkbox", undefined, "새 카테고리:");
+        var newCategoryInput = newCategoryGroup.add("edittext", undefined, "");
+        newCategoryInput.characters = 20;
+        newCategoryInput.enabled = false;
+        
+        newCategoryCheckbox.onClick = function() {
+            newCategoryInput.enabled = newCategoryCheckbox.value;
+            categoryDropdown.enabled = !newCategoryCheckbox.value;
+        };
         
         saveDialog.add("statictext", undefined, "필요한 이미지 개수:");
         var imageCountGroup = saveDialog.add("group");
@@ -1709,24 +2409,46 @@ function createDialog() {
             if (imageCountRadio2.value) imageCount = 2;
             else if (imageCountRadioMulti.value) imageCount = "multiple";
             
+            var targetCategory;
+            if (newCategoryCheckbox.value && newCategoryInput.text.length > 0) {
+                // 새 카테고리 추가
+                targetCategory = newCategoryInput.text;
+                var categories = loadUserCategories();
+                var exists = false;
+                for (var i = 0; i < categories.length; i++) {
+                    if (categories[i] === targetCategory) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    categories.push(targetCategory);
+                    saveUserCategories(categories);
+                }
+            } else {
+                targetCategory = categoryDropdown.selection ? categoryDropdown.selection.text : '나의 작업';
+            }
+            
             var newPreset = addUserPreset(
                 titleInput.text,
                 descInput.text || "",
                 dialog.promptInput.text,
                 imageCount,
-                "사용자"
+                targetCategory
             );
             
             if (newPreset) {
-                alert("프리셋이 저장되었습니다!");
-                updatePresetList(); // 목록 새로고침
-                // 사용자 카테고리로 자동 전환
-                for (var i = 0; i < categoryDropdown.items.length; i++) {
-                    if (categoryDropdown.items[i].text === "사용자") {
-                        categoryDropdown.selection = i;
-                        break;
-                    }
+                alert("프리셋이 추가되었습니다!");
+                
+                // 사용자 탭 활성화되어 있으면 목록 업데이트
+                if (activeTab === "user") {
+                    updatePresetList();
                 }
+                
+                // 사용자 프리셋 수 업데이트
+                var userPresets = loadUserPresets();
+                userTabBtn.text = "사용자 프리셋 (" + userPresets.length + ")";
+                
                 saveDialog.close();
             }
         };
@@ -1738,8 +2460,87 @@ function createDialog() {
         saveDialog.show();
     };
     
-    // 초기 목록 로드
+    // 프리셋 저장 버튼 클릭 (사용자 탭 전용)
+    savePresetButton.onClick = function() {
+        if (dialog.promptInput.text.length === 0) {
+            alert("먼저 프롬프트를 입력해주세요.");
+            return;
+        }
+        
+        // 저장 대화상자
+        var saveDialog = new Window("dialog", "프리셋 저장");
+        saveDialog.orientation = "column";
+        saveDialog.alignChildren = "fill";
+        saveDialog.margins = 15;
+        saveDialog.spacing = 10;
+        
+        saveDialog.add("statictext", undefined, "제목:");
+        var titleInput = saveDialog.add("edittext", undefined, "");
+        titleInput.characters = 30;
+        titleInput.active = true;
+        
+        saveDialog.add("statictext", undefined, "설명:");
+        var descInput = saveDialog.add("edittext", undefined, "");
+        descInput.characters = 30;
+        
+        saveDialog.add("statictext", undefined, "카테고리:");
+        var categoryDropdown = saveDialog.add("dropdownlist", undefined, loadUserCategories());
+        categoryDropdown.selection = 0;
+        
+        saveDialog.add("statictext", undefined, "필요한 이미지 개수:");
+        var imageCountGroup = saveDialog.add("group");
+        var imageCountRadio1 = imageCountGroup.add("radiobutton", undefined, "1개");
+        var imageCountRadio2 = imageCountGroup.add("radiobutton", undefined, "2개");
+        var imageCountRadioMulti = imageCountGroup.add("radiobutton", undefined, "여러 개");
+        imageCountRadio1.value = true;
+        
+        var buttonGroup = saveDialog.add("group");
+        buttonGroup.alignment = "center";
+        var saveBtn = buttonGroup.add("button", undefined, "저장");
+        var cancelBtn = buttonGroup.add("button", undefined, "취소");
+        
+        saveBtn.onClick = function() {
+            if (titleInput.text.length === 0) {
+                alert("제목을 입력해주세요.");
+                return;
+            }
+            
+            var imageCount = 1;
+            if (imageCountRadio2.value) imageCount = 2;
+            else if (imageCountRadioMulti.value) imageCount = "multiple";
+            
+            var selectedCategory = categoryDropdown.selection ? categoryDropdown.selection.text : '나의 작업';
+            
+            var newPreset = addUserPreset(
+                titleInput.text,
+                descInput.text || "",
+                dialog.promptInput.text,
+                imageCount,
+                selectedCategory
+            );
+            
+            if (newPreset) {
+                alert("프리셋이 저장되었습니다!");
+                updatePresetList(); // 목록 새로고침
+                saveDialog.close();
+            }
+        };
+        
+        cancelBtn.onClick = function() {
+            saveDialog.close();
+        };
+        
+        saveDialog.show();
+    };
+    
+    // 초기화
+    updateTabStyles();
+    updateCategoryDropdown();
     updatePresetList();
+    
+    // 사용자 프리셋 수 표시
+    var userPresets = loadUserPresets();
+    userTabBtn.text = "사용자 프리셋 (" + userPresets.length + ")";
     
     // 참조 이미지 선택 (멀티 이미지 지원)
     var refPanel = dialog.add("panel", undefined, "참조 이미지 (선택 사항)");

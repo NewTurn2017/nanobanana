@@ -19,7 +19,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.1.0";
+var PLUGIN_VERSION = "2.2.0";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -1914,9 +1914,52 @@ function getColorName(color) {
     return closestColor;
 }
 
-// ===== 고급 색상 피커 =====
+// ===== 고급 색상 피커 (Photoshop 네이티브) =====
 
 function createAdvancedColorPicker(initialColor) {
+    try {
+        // 현재 전경색 저장
+        var savedForeground = app.foregroundColor;
+        
+        // 초기 색상을 전경색으로 설정
+        if (initialColor) {
+            var tempColor = new SolidColor();
+            tempColor.rgb.red = initialColor.r;
+            tempColor.rgb.green = initialColor.g;
+            tempColor.rgb.blue = initialColor.b;
+            app.foregroundColor = tempColor;
+        }
+        
+        // Photoshop 네이티브 색상 피커 호출
+        // showColorPicker() 함수를 사용하여 Photoshop의 내장 색상 피커를 표시
+        var result = app.showColorPicker();
+        
+        if (result) {
+            // 사용자가 OK를 클릭한 경우
+            var selectedColor = app.foregroundColor;
+            
+            // 원래 전경색 복원
+            app.foregroundColor = savedForeground;
+            
+            // RGB 값 반환
+            return {
+                r: Math.round(selectedColor.rgb.red),
+                g: Math.round(selectedColor.rgb.green),
+                b: Math.round(selectedColor.rgb.blue)
+            };
+        } else {
+            // 사용자가 취소한 경우
+            app.foregroundColor = savedForeground;
+            return null;
+        }
+    } catch(e) {
+        // 네이티브 피커가 실패한 경우 폴백으로 간단한 다이얼로그 사용
+        return createFallbackColorPicker(initialColor);
+    }
+}
+
+// 폴백 색상 피커 (네이티브 피커가 작동하지 않을 경우)
+function createFallbackColorPicker(initialColor) {
     var dialog = new Window("dialog", "색상 선택");
     dialog.orientation = "column";
     dialog.alignChildren = "fill";
@@ -1965,36 +2008,46 @@ function createAdvancedColorPicker(initialColor) {
     var hexInput = hexGroup.add("edittext", undefined, rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b).substring(1));
     hexInput.characters = 8;
     
-    // HSB 슬라이더
-    var hsbPanel = dialog.add("panel", undefined, "색상 조정");
-    hsbPanel.alignChildren = "fill";
-    hsbPanel.margins = 10;
+    // 간단한 프리셋 색상
+    var presetPanel = dialog.add("panel", undefined, "빠른 선택");
+    presetPanel.orientation = "row";
+    presetPanel.alignChildren = "center";
     
-    var currentHsb = rgbToHsb(selectedColor.r, selectedColor.g, selectedColor.b);
+    var presetColors = [
+        {r: 255, g: 0, b: 0},     // 빨강
+        {r: 0, g: 255, b: 0},     // 초록
+        {r: 0, g: 0, b: 255},     // 파랑
+        {r: 255, g: 255, b: 0},   // 노랑
+        {r: 255, g: 0, b: 255},   // 마젠타
+        {r: 0, g: 255, b: 255},   // 시안
+        {r: 0, g: 0, b: 0},       // 검정
+        {r: 255, g: 255, b: 255}  // 하양
+    ];
     
-    // Hue (색상)
-    var hueGroup = hsbPanel.add("group");
-    hueGroup.add("statictext", undefined, "색상:");
-    var hueSlider = hueGroup.add("slider", undefined, currentHsb.h, 0, 360);
-    hueSlider.preferredSize.width = 200;
-    var hueValue = hueGroup.add("statictext", undefined, currentHsb.h.toString() + "°");
-    hueValue.characters = 5;
-    
-    // Saturation (채도)
-    var satGroup = hsbPanel.add("group");
-    satGroup.add("statictext", undefined, "채도:");
-    var satSlider = satGroup.add("slider", undefined, currentHsb.s, 0, 100);
-    satSlider.preferredSize.width = 200;
-    var satValue = satGroup.add("statictext", undefined, currentHsb.s.toString() + "%");
-    satValue.characters = 5;
-    
-    // Brightness (명도)
-    var briGroup = hsbPanel.add("group");
-    briGroup.add("statictext", undefined, "명도:");
-    var briSlider = briGroup.add("slider", undefined, currentHsb.b, 0, 100);
-    briSlider.preferredSize.width = 200;
-    var briValue = briGroup.add("statictext", undefined, currentHsb.b.toString() + "%");
-    briValue.characters = 5;
+    for (var i = 0; i < presetColors.length; i++) {
+        (function(color) {
+            var colorBtn = presetPanel.add("button", undefined, "");
+            colorBtn.preferredSize.width = 30;
+            colorBtn.preferredSize.height = 30;
+            colorBtn.fillBrush = colorBtn.graphics.newBrush(colorBtn.graphics.BrushType.SOLID_COLOR, [color.r/255, color.g/255, color.b/255]);
+            
+            colorBtn.onDraw = function() {
+                this.graphics.newPath();
+                this.graphics.rectPath(0, 0, this.size.width, this.size.height);
+                this.graphics.fillPath(this.fillBrush);
+            };
+            
+            colorBtn.onClick = function() {
+                selectedColor = {r: color.r, g: color.g, b: color.b};
+                rInput.text = color.r.toString();
+                gInput.text = color.g.toString();
+                bInput.text = color.b.toString();
+                hexInput.text = rgbToHex(color.r, color.g, color.b).substring(1);
+                hexText.text = rgbToHex(color.r, color.g, color.b);
+                updatePreview();
+            };
+        })(presetColors[i]);
+    }
     
     // 버튼
     var buttonGroup = dialog.add("group");
@@ -2013,19 +2066,10 @@ function createAdvancedColorPicker(initialColor) {
         b = Math.max(0, Math.min(255, b));
         
         selectedColor = { r: r, g: g, b: b };
-        currentHsb = rgbToHsb(r, g, b);
         
         // HEX 업데이트
         hexInput.text = rgbToHex(r, g, b).substring(1);
         hexText.text = rgbToHex(r, g, b);
-        
-        // HSB 슬라이더 업데이트
-        hueSlider.value = currentHsb.h;
-        satSlider.value = currentHsb.s;
-        briSlider.value = currentHsb.b;
-        hueValue.text = currentHsb.h.toString() + "°";
-        satValue.text = currentHsb.s.toString() + "%";
-        briValue.text = currentHsb.b.toString() + "%";
         
         updatePreview();
     }
@@ -2045,31 +2089,6 @@ function createAdvancedColorPicker(initialColor) {
         }
     }
     
-    function updateFromHsb() {
-        var h = hueSlider.value;
-        var s = satSlider.value;
-        var b = briSlider.value;
-        
-        currentHsb = { h: h, s: s, b: b };
-        selectedColor = hsbToRgb(h, s, b);
-        
-        // RGB 필드 업데이트
-        rInput.text = selectedColor.r.toString();
-        gInput.text = selectedColor.g.toString();
-        bInput.text = selectedColor.b.toString();
-        
-        // HEX 업데이트
-        hexInput.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b).substring(1);
-        hexText.text = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b);
-        
-        // HSB 텍스트 업데이트
-        hueValue.text = Math.round(h).toString() + "°";
-        satValue.text = Math.round(s).toString() + "%";
-        briValue.text = Math.round(b).toString() + "%";
-        
-        updatePreview();
-    }
-    
     function updatePreview() {
         try {
             var g = newColorDisplay.graphics;
@@ -2081,7 +2100,6 @@ function createAdvancedColorPicker(initialColor) {
     // 이벤트 핸들러
     rInput.onChange = gInput.onChange = bInput.onChange = updateFromRgb;
     hexInput.onChange = updateFromHex;
-    hueSlider.onChanging = satSlider.onChanging = briSlider.onChanging = updateFromHsb;
     
     // 초기 프리뷰 업데이트
     updatePreview();
@@ -2102,9 +2120,6 @@ function createAdvancedColorPicker(initialColor) {
     return null;
 }
 
-// (이전 createAdvancedColorPicker 함수는 제거됨)
-
-/* 이전 버전 제거 - 새로운 간소화된 버전 사용
 function createAdvancedColorPicker_old(initialColor) {
     var dialog = new Window("dialog", "색상 선택");
     dialog.orientation = "column";
@@ -2453,9 +2468,6 @@ function createAdvancedColorPicker_old(initialColor) {
         return selectedColor;
     }
     return null;
-}
-*/
-
 // ===== 헬퍼 함수 =====
 
 function extractPredictionId(response) {

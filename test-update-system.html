@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nano Banana 업데이트 시스템 테스트</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .container {
+            background: #2a2a2a;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #4CAF50;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .status-box {
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .update-available {
+            background: #2a4a2a;
+            border: 1px solid #4CAF50;
+        }
+        .button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .button:hover {
+            background: #45a049;
+        }
+        .button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .log {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #444;
+        }
+        .log-entry.info { border-left-color: #2196F3; }
+        .log-entry.success { border-left-color: #4CAF50; }
+        .log-entry.warning { border-left-color: #FF9800; }
+        .log-entry.error { border-left-color: #f44336; }
+        .version-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .version-card {
+            background: #333;
+            padding: 15px;
+            border-radius: 5px;
+            flex: 1;
+            margin: 0 10px;
+            text-align: center;
+        }
+        .version-card h3 {
+            margin: 0 0 10px 0;
+            color: #888;
+            font-size: 14px;
+        }
+        .version-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .release-notes {
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .release-notes h3 {
+            color: #4CAF50;
+            margin-top: 0;
+        }
+        .release-notes ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .release-notes li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍌 Nano Banana 업데이트 시스템 테스트</h1>
+        
+        <div class="version-info">
+            <div class="version-card">
+                <h3>현재 버전</h3>
+                <div class="version-number" id="currentVersion">2.1.0</div>
+            </div>
+            <div class="version-card">
+                <h3>최신 버전</h3>
+                <div class="version-number" id="latestVersion">확인 중...</div>
+            </div>
+            <div class="version-card">
+                <h3>상태</h3>
+                <div id="updateStatus">대기 중...</div>
+            </div>
+        </div>
+
+        <div id="updateBox" class="status-box" style="display: none;">
+            <h3>🎉 새로운 업데이트가 있습니다!</h3>
+            <p id="updateMessage"></p>
+            <button class="button" onclick="simulateUpdate()">업데이트 설치</button>
+            <button class="button" onclick="skipUpdate()">나중에</button>
+        </div>
+
+        <div id="releaseNotes" class="release-notes" style="display: none;">
+            <h3>📝 릴리스 노트</h3>
+            <div id="releaseContent"></div>
+        </div>
+
+        <div class="status-box">
+            <h3>테스트 컨트롤</h3>
+            <button class="button" onclick="checkForUpdate()">업데이트 확인</button>
+            <button class="button" onclick="simulateUpdate()">업데이트 시뮬레이션</button>
+            <button class="button" onclick="clearLog()">로그 지우기</button>
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-entry info">시스템 준비 완료</div>
+        </div>
+    </div>
+
+    <script>
+        const CURRENT_VERSION = '2.1.0';
+        const UPDATE_CHECK_URL = 'https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest';
+        
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '<div class="log-entry info">로그 초기화됨</div>';
+        }
+
+        function compareVersions(v1, v2) {
+            const parts1 = v1.replace('v', '').split('.').map(Number);
+            const parts2 = v2.replace('v', '').split('.').map(Number);
+            
+            for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+                const part1 = parts1[i] || 0;
+                const part2 = parts2[i] || 0;
+                if (part1 < part2) return -1;
+                if (part1 > part2) return 1;
+            }
+            return 0;
+        }
+
+        async function checkForUpdate() {
+            addLog('GitHub API에서 최신 릴리스 확인 중...', 'info');
+            document.getElementById('updateStatus').textContent = '확인 중...';
+            
+            try {
+                const response = await fetch(UPDATE_CHECK_URL);
+                const data = await response.json();
+                
+                const latestVersion = data.tag_name;
+                document.getElementById('latestVersion').textContent = latestVersion;
+                
+                addLog(`최신 버전: ${latestVersion}`, 'success');
+                
+                if (compareVersions(CURRENT_VERSION, latestVersion) < 0) {
+                    addLog('새로운 업데이트 발견!', 'warning');
+                    document.getElementById('updateStatus').textContent = '업데이트 가능';
+                    document.getElementById('updateStatus').style.color = '#FF9800';
+                    
+                    // 업데이트 박스 표시
+                    document.getElementById('updateBox').style.display = 'block';
+                    document.getElementById('updateBox').className = 'status-box update-available';
+                    document.getElementById('updateMessage').textContent = 
+                        `버전 ${CURRENT_VERSION}에서 ${latestVersion}으로 업데이트할 수 있습니다.`;
+                    
+                    // 릴리스 노트 표시
+                    if (data.body) {
+                        document.getElementById('releaseNotes').style.display = 'block';
+                        document.getElementById('releaseContent').innerHTML = 
+                            data.body.replace(/\n/g, '<br>');
+                    }
+                    
+                    // 다운로드 URL 확인
+                    if (data.assets && data.assets.length > 0) {
+                        addLog(`다운로드 가능한 파일: ${data.assets.length}개`, 'info');
+                        data.assets.forEach(asset => {
+                            addLog(`  - ${asset.name} (${(asset.size / 1024).toFixed(2)} KB)`, 'info');
+                        });
+                    }
+                } else {
+                    addLog('현재 최신 버전입니다', 'success');
+                    document.getElementById('updateStatus').textContent = '최신 버전';
+                    document.getElementById('updateStatus').style.color = '#4CAF50';
+                    document.getElementById('updateBox').style.display = 'none';
+                }
+            } catch (error) {
+                addLog(`오류 발생: ${error.message}`, 'error');
+                document.getElementById('updateStatus').textContent = '오류';
+                document.getElementById('updateStatus').style.color = '#f44336';
+            }
+        }
+
+        async function simulateUpdate() {
+            addLog('업데이트 프로세스 시작...', 'warning');
+            
+            // 단계별 시뮬레이션
+            const steps = [
+                '현재 파일 백업 중...',
+                'Nano-Banana-Gemini.jsx 다운로드 중...',
+                'preset.js 다운로드 중...',
+                '파일 무결성 검증 중...',
+                '업데이트 적용 중...',
+                '업데이트 완료!'
+            ];
+            
+            for (let i = 0; i < steps.length; i++) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                addLog(steps[i], i === steps.length - 1 ? 'success' : 'info');
+            }
+            
+            // 완료 메시지
+            alert('업데이트가 완료되었습니다!\n\nPhotoshop을 재시작하여 변경사항을 적용하세요.');
+            
+            // UI 업데이트
+            document.getElementById('currentVersion').textContent = '2.1.1';
+            document.getElementById('updateStatus').textContent = '최신 버전';
+            document.getElementById('updateStatus').style.color = '#4CAF50';
+            document.getElementById('updateBox').style.display = 'none';
+        }
+
+        function skipUpdate() {
+            addLog('업데이트를 건너뛰었습니다', 'warning');
+            document.getElementById('updateBox').style.display = 'none';
+        }
+
+        // 페이지 로드 시 자동 확인
+        window.onload = function() {
+            addLog('Nano Banana 업데이트 시스템 테스트 페이지 로드 완료', 'success');
+            setTimeout(checkForUpdate, 1000);
+        };
+    </script>
+</body>
+</html>

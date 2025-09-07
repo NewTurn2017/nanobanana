@@ -20,7 +20,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.3.1";
+var PLUGIN_VERSION = "2.4.0";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -367,6 +367,94 @@ function addUserPreset(title, description, prompt, imageCount, category) {
 
 // ===== 진행 상황 창 =====
 
+/**
+ * 멀티 프로그레스 윈도우 생성 - 여러 이미지 동시 생성 시 사용
+ */
+function createMultiProgressWindow(count) {
+    PROCESS_CANCELLED = false;
+    
+    var win = new Window("palette", "AI 이미지 생성 중 (" + count + "장 병렬 처리)");
+    win.orientation = "column";
+    win.alignChildren = "fill";
+    win.preferredSize.width = 400;
+    win.margins = 15;
+    win.spacing = 10;
+    
+    // 모델 정보
+    var modelText = win.add("statictext", undefined, "Gemini 2.5 Flash로 " + count + "장 동시 생성 중");
+    modelText.graphics.font = ScriptUI.newFont(modelText.graphics.font.name, ScriptUI.FontStyle.BOLD, 12);
+    
+    // 전체 진행 상황
+    win.statusText = win.add("statictext", undefined, "이미지 준비 중...");
+    
+    // 개별 프로그레스 바들
+    var progressPanel = win.add("panel", undefined, "생성 진행 상황");
+    progressPanel.alignChildren = "fill";
+    progressPanel.margins = 10;
+    
+    win.progressBars = [];
+    win.statusTexts = [];
+    
+    for (var i = 0; i < count; i++) {
+        var group = progressPanel.add("group");
+        group.alignment = "fill";
+        
+        var label = group.add("statictext", undefined, "이미지 " + (i+1) + ":");
+        label.preferredSize.width = 60;
+        
+        var progressBar = group.add("progressbar", undefined, 0, 100);
+        progressBar.preferredSize.width = 200;
+        
+        var statusText = group.add("statictext", undefined, "대기");
+        statusText.preferredSize.width = 60;
+        
+        win.progressBars.push(progressBar);
+        win.statusTexts.push(statusText);
+    }
+    
+    // 예상 시간
+    var timeText = win.add("statictext", undefined, "병렬 처리로 시간이 단축됩니다 (보통 15-40초)");
+    timeText.graphics.font = ScriptUI.newFont(timeText.graphics.font.name, ScriptUI.FontStyle.ITALIC, 10);
+    
+    // 개별 프로그레스 업데이트 함수
+    win.updateProgress = function(index, value) {
+        if (index >= 0 && index < win.progressBars.length) {
+            win.progressBars[index].value = value;
+            if (value === 100) {
+                win.statusTexts[index].text = "완료";
+            } else if (value > 0) {
+                win.statusTexts[index].text = "처리중";
+            }
+        }
+    };
+    
+    // 단일 프로그레스 윈도우와 호환성을 위한 함수들
+    win.updateStatus = function(text) {
+        win.statusText.text = text;
+    };
+    
+    // Windows 전용 경고
+    if (CONFIG.IS_WINDOWS) {
+        var separator = win.add("panel");
+        separator.preferredSize.height = 1;
+        
+        var warningText = win.add("statictext", undefined, 
+            "참고: 여러 명령 창이 잠시 나타날 수 있습니다.", {multiline: false});
+        warningText.graphics.font = ScriptUI.newFont(warningText.graphics.font.name, ScriptUI.FontStyle.ITALIC, 9);
+        warningText.justify = "center";
+    }
+    
+    // 취소 버튼
+    var cancelBtn = win.add("button", undefined, "취소");
+    cancelBtn.onClick = function() {
+        PROCESS_CANCELLED = true;
+        win.close();
+    };
+    
+    win.show();
+    return win;
+}
+
 function createProgressWindow() {
     PROCESS_CANCELLED = false;
     
@@ -614,6 +702,151 @@ function encodeImageBase64(imageFile, progressWin) {
 }
 
 // ===== API 함수 =====
+
+/**
+ * 병렬 API 호출 - 여러 요청을 동시에 처리
+ */
+function callAPIParallel(imageFile, prompt, count, progressWin, referenceFiles) {
+    try {
+        // 취소 확인
+        if (PROCESS_CANCELLED) return null;
+        
+        // 메인 이미지 인코딩 (한 번만 수행)
+        var base64Data = encodeImageBase64(imageFile, progressWin);
+        if (!base64Data || PROCESS_CANCELLED) {
+            if (!PROCESS_CANCELLED) alert("이미지를 인코딩할 수 없습니다");
+            return null;
+        }
+        
+        // 참조 이미지들 인코딩
+        var referenceBase64Data = [];
+        if (referenceFiles && referenceFiles.length > 0) {
+            for (var i = 0; i < referenceFiles.length; i++) {
+                if (PROCESS_CANCELLED) return null;
+                if (progressWin) progressWin.updateStatus("참조 이미지 " + (i+1) + " 인코딩 중...");
+                
+                var refBase64 = encodeImageBase64(referenceFiles[i], progressWin);
+                if (refBase64) {
+                    referenceBase64Data.push(refBase64);
+                }
+            }
+        }
+        
+        // JSON 페이로드 생성 (한 번만)
+        var enhancedPrompt = "Generate an image: " + prompt;
+        var parts = [];
+        
+        // 텍스트 프롬프트 추가
+        parts.push('{"text":"' + escapeJsonString(enhancedPrompt) + '"}');
+        
+        // 메인 이미지 추가
+        parts.push('{"inline_data":{"mime_type":"image/jpeg","data":"' + base64Data + '"}}');
+        
+        // 참조 이미지들 추가
+        for (var j = 0; j < referenceBase64Data.length; j++) {
+            parts.push('{"inline_data":{"mime_type":"image/jpeg","data":"' + referenceBase64Data[j] + '"}}');
+        }
+        
+        var payload = '{"contents":[{"parts":[' + parts.join(',') + ']}]}';
+        
+        // 병렬 요청 실행
+        var responseFiles = [];
+        var timestamp = new Date().getTime();
+        
+        for (var k = 0; k < count; k++) {
+            if (PROCESS_CANCELLED) break;
+            
+            var responseFile = new File(Folder.temp + "/response_" + k + "_" + timestamp + ".json");
+            responseFiles.push(responseFile);
+            
+            // curl 명령 생성
+            var apiUrl = CONFIG.API_ENDPOINT + CONFIG.MODEL_ID + ":" + CONFIG.GENERATE_CONTENT_API + "?key=" + CONFIG.API_KEY;
+            var curlArgs = '-s -X POST ' +
+                '-H "Content-Type: application/json" ' +
+                '-d @- ' +
+                '"' + apiUrl + '" > "' + responseFile.fsName + '"';
+            
+            // 백그라운드 실행
+            if (CONFIG.IS_WINDOWS) {
+                // Windows: 백그라운드 실행
+                var cmdFile = new File(Folder.temp + "/curl_" + k + "_" + timestamp + ".bat");
+                cmdFile.open("w");
+                cmdFile.writeln('@echo off');
+                cmdFile.writeln('echo ' + payload.replace(/"/g, '""') + ' | curl.exe ' + curlArgs);
+                cmdFile.close();
+                
+                app.system('start /B cmd.exe /c "' + cmdFile.fsName + '"');
+            } else {
+                // macOS: 백그라운드 실행
+                var scriptFile = new File(Folder.temp + "/curl_" + k + "_" + timestamp + ".sh");
+                scriptFile.open("w");
+                scriptFile.writeln('#!/bin/bash');
+                scriptFile.writeln("echo '" + payload.replace(/'/g, "'\\''") + "' | curl " + curlArgs);
+                scriptFile.close();
+                
+                app.system('chmod +x "' + scriptFile.fsName + '" && "' + scriptFile.fsName + '" &');
+            }
+        }
+        
+        // 모든 응답 대기 및 수집
+        var results = [];
+        var maxWaitTime = 60000; // 60초 최대 대기
+        var checkInterval = 1000; // 1초마다 확인
+        var startTime = new Date().getTime();
+        
+        while (results.length < count && (new Date().getTime() - startTime) < maxWaitTime) {
+            if (PROCESS_CANCELLED) break;
+            
+            for (var m = 0; m < responseFiles.length; m++) {
+                if (!responseFiles[m]) continue;
+                
+                if (responseFiles[m].exists && responseFiles[m].length > 0) {
+                    // 파일이 완전히 쓰여졌는지 확인 (크기가 안정화될 때까지 대기)
+                    $.sleep(500);
+                    var prevSize = responseFiles[m].length;
+                    $.sleep(500);
+                    
+                    if (responseFiles[m].length === prevSize && prevSize > 0) {
+                        // 응답 읽기
+                        responseFiles[m].open("r");
+                        responseFiles[m].encoding = "UTF-8";
+                        var response = responseFiles[m].read();
+                        responseFiles[m].close();
+                        
+                        // 결과 처리
+                        var result = processGeminiResponse(response, progressWin);
+                        if (result) {
+                            results.push(result);
+                            if (progressWin && progressWin.updateProgress) {
+                                progressWin.updateProgress(m, 100);
+                            }
+                        }
+                        
+                        // 처리된 파일 삭제
+                        responseFiles[m].remove();
+                        responseFiles[m] = null;
+                    }
+                }
+            }
+            
+            if (progressWin) progressWin.updateStatus("응답 대기 중... (" + results.length + "/" + count + ")");
+            $.sleep(checkInterval);
+        }
+        
+        // 임시 파일 정리
+        for (var n = 0; n < responseFiles.length; n++) {
+            if (responseFiles[n] && responseFiles[n].exists) {
+                responseFiles[n].remove();
+            }
+        }
+        
+        return results.length > 0 ? results : null;
+        
+    } catch(e) {
+        if (!PROCESS_CANCELLED) alert("병렬 API 오류: " + e.message);
+        return null;
+    }
+}
 
 function callAPI(imageFile, prompt, progressWin, referenceFiles) {
     try {
@@ -870,9 +1103,14 @@ function saveBase64AsImage(base64Data, outputFile) {
 
 // ===== 처리 함수 =====
 
-function processSelection(prompt, newDocument, referenceFiles) {
+function processSelection(prompt, newDocument, referenceFiles, generateCount) {
     try {
         var doc = app.activeDocument;
+        
+        // generateCount가 정의되지 않았으면 기본값 1
+        if (typeof generateCount === 'undefined' || !generateCount) {
+            generateCount = 1;
+        }
         
         // 현재 선택 영역 저장
         var savedSelection = doc.channels.add();
@@ -895,41 +1133,77 @@ function processSelection(prompt, newDocument, referenceFiles) {
             return;
         }
         
-        // 진행 상황 창 표시
-        var progressWin = createProgressWindow();
-        
-        // API 호출 (멀티 참조 이미지 포함)
-        var resultFile = callAPI(tempFile, prompt, progressWin, referenceFiles);
-        
-        // 정리
-        tempFile.remove();
-        
-        if (PROCESS_CANCELLED) {
+        // 생성 개수에 따라 다른 처리
+        if (generateCount > 1) {
+            // 병렬 처리용 진행 상황 창
+            var progressWin = createMultiProgressWindow(generateCount);
+            
+            // 병렬 API 호출
+            var resultFiles = callAPIParallel(tempFile, prompt, generateCount, progressWin, referenceFiles);
+            
+            // 정리
+            tempFile.remove();
+            
+            if (PROCESS_CANCELLED) {
+                progressWin.close();
+                savedSelection.remove();
+                return;
+            }
+            
+            if (resultFiles && resultFiles.length > 0) {
+                if (!PROCESS_CANCELLED) {
+                    progressWin.updateStatus("문서에 결과 배치 중...");
+                    
+                    if (newDocument) {
+                        // 새 문서로 열 때는 첫 번째 결과만 열기
+                        app.open(resultFiles[0]);
+                    } else {
+                        // 여러 결과를 그룹으로 배치
+                        placeMultipleResults(doc, resultFiles, x1, y1, x2, y2, savedSelection, prompt);
+                    }
+                }
+            }
+            
             progressWin.close();
-            savedSelection.remove();
-            return;
-        }
-        
-        if (resultFile && resultFile.exists) {
-            if (!PROCESS_CANCELLED) {
-                progressWin.updateStatus("문서에 결과 배치 중...");
-                
-                if (newDocument) {
-                    app.open(resultFile);
-                } else {
-                    placeResultInDocument(doc, resultFile, x1, y1, x2, y2, savedSelection, prompt);
+            
+            // 생성된 파일들 정리
+            for (var i = 0; i < resultFiles.length; i++) {
+                try { resultFiles[i].remove(); } catch(e) {}
+            }
+            
+        } else {
+            // 기존 단일 처리
+            var progressWin = createProgressWindow();
+            
+            // API 호출 (멀티 참조 이미지 포함)
+            var resultFile = callAPI(tempFile, prompt, progressWin, referenceFiles);
+            
+            // 정리
+            tempFile.remove();
+            
+            if (PROCESS_CANCELLED) {
+                progressWin.close();
+                savedSelection.remove();
+                return;
+            }
+            
+            if (resultFile && resultFile.exists) {
+                if (!PROCESS_CANCELLED) {
+                    progressWin.updateStatus("문서에 결과 배치 중...");
+                    
+                    if (newDocument) {
+                        app.open(resultFile);
+                    } else {
+                        placeResultInDocument(doc, resultFile, x1, y1, x2, y2, savedSelection, prompt);
+                    }
                 }
             }
             
             resultFile.remove();
             progressWin.close();
-        } else {
-            progressWin.close();
-            if (!PROCESS_CANCELLED) {
-                alert("이미지를 생성할 수 없습니다");
-            }
-            savedSelection.remove();
         }
+        
+        savedSelection.remove();
         
     } catch(e) {
         alert("처리 오류: " + e.message);
@@ -1950,8 +2224,28 @@ function createDialog() {
     dialog.colorFormatDropdown = colorFormatDropdown;
     
     // 출력 옵션
-    dialog.newDocCheckbox = dialog.add("checkbox", undefined, "새 문서로 출력");
+    var outputPanel = dialog.add("panel", undefined, "출력 옵션");
+    outputPanel.alignChildren = "fill";
+    outputPanel.margins = 10;
+    outputPanel.spacing = 8;
+    
+    // 생성 개수 선택
+    var countGroup = outputPanel.add("group");
+    countGroup.alignment = "fill";
+    countGroup.add("statictext", undefined, "생성 개수:");
+    var generateCountDropdown = outputPanel.add("dropdownlist", undefined, ["1장", "2장 (병렬)", "3장 (병렬)", "4장 (병렬)"]);
+    generateCountDropdown.selection = 0;
+    generateCountDropdown.preferredSize.width = 120;
+    
+    // 병렬 생성 설명
+    var parallelInfo = outputPanel.add("statictext", undefined, "※ 2장 이상 선택 시 동시에 여러 변형을 생성합니다", {multiline: false});
+    parallelInfo.graphics.font = ScriptUI.newFont(parallelInfo.graphics.font.name, ScriptUI.FontStyle.ITALIC, 9);
+    
+    dialog.newDocCheckbox = outputPanel.add("checkbox", undefined, "새 문서로 출력");
     dialog.newDocCheckbox.value = false;
+    
+    // dialog에 생성 개수 저장
+    dialog.generateCountDropdown = generateCountDropdown;
     
     // 버튼
     var buttonGroup = dialog.add("group");
@@ -2579,6 +2873,79 @@ function hasActiveSelection() {
     }
 }
 
+/**
+ * 여러 결과를 그룹으로 배치
+ */
+function placeMultipleResults(doc, resultFiles, x1, y1, x2, y2, savedSelection, prompt) {
+    try {
+        // 레이어 그룹 생성
+        var layerGroup = doc.layerSets.add();
+        layerGroup.name = prompt.substring(0, 25) + " (" + resultFiles.length + "장)";
+        
+        for (var i = 0; i < resultFiles.length; i++) {
+            var resultDoc = app.open(resultFiles[i]);
+            
+            // 그룹으로 복사
+            resultDoc.artLayers[0].duplicate(layerGroup, ElementPlacement.PLACEATBEGINNING);
+            resultDoc.close(SaveOptions.DONOTSAVECHANGES);
+            
+            var newLayer = layerGroup.artLayers[0];
+            newLayer.name = prompt.substring(0, 25) + " #" + (i+1);
+            
+            // 크기 조정
+            var targetWidth = x2 - x1;
+            var targetHeight = y2 - y1;
+            
+            var currentBounds = newLayer.bounds;
+            var currentWidth = currentBounds[2].value - currentBounds[0].value;
+            var currentHeight = currentBounds[3].value - currentBounds[1].value;
+            
+            if (Math.abs(currentWidth - targetWidth) > 1 || Math.abs(currentHeight - targetHeight) > 1) {
+                var scaleX = (targetWidth / currentWidth) * 100;
+                var scaleY = (targetHeight / currentHeight) * 100;
+                var uniformScale = Math.min(scaleX, scaleY);
+                
+                newLayer.resize(uniformScale, uniformScale, AnchorPosition.TOPLEFT);
+            }
+            
+            // 위치 조정
+            var finalBounds = newLayer.bounds;
+            var finalWidth = finalBounds[2].value - finalBounds[0].value;
+            var finalHeight = finalBounds[3].value - finalBounds[1].value;
+            
+            var centerX = x1 + (targetWidth / 2);
+            var centerY = y1 + (targetHeight / 2);
+            
+            var currentCenterX = finalBounds[0].value + (finalWidth / 2);
+            var currentCenterY = finalBounds[1].value + (finalHeight / 2);
+            
+            var dx = centerX - currentCenterX;
+            var dy = centerY - currentCenterY;
+            
+            newLayer.translate(dx, dy);
+            
+            // 마스크 적용
+            doc.selection.load(savedSelection);
+            doc.activeLayer = newLayer;
+            addLayerMask();
+            doc.selection.deselect();
+            
+            // 첫 번째 레이어만 표시, 나머지는 숨김
+            newLayer.visible = (i === 0);
+        }
+        
+        savedSelection.remove();
+        
+        // 첫 번째 레이어 활성화
+        if (layerGroup.artLayers.length > 0) {
+            doc.activeLayer = layerGroup.artLayers[layerGroup.artLayers.length - 1];
+        }
+        
+    } catch(e) {
+        alert("다중 배치 오류: " + e.message);
+    }
+}
+
 function placeResultInDocument(doc, resultFile, x1, y1, x2, y2, savedSelection, prompt) {
     try {
         var resultDoc = app.open(resultFile);
@@ -3191,6 +3558,7 @@ function main() {
         var addToPrompt = dialog.addToPromptCheckbox ? dialog.addToPromptCheckbox.value : false;
         var colorFormat = dialog.colorFormatDropdown ? dialog.colorFormatDropdown.selection.index : 0;
         var referenceFiles = dialog.referenceFiles;
+        var generateCount = dialog.generateCountDropdown ? parseInt(dialog.generateCountDropdown.selection.text) : 1;
         
         if (prompt.length > 0) {
             // 색상이 선택되고 프롬프트에 추가 옵션이 체크되면 색상 추가
@@ -3215,7 +3583,7 @@ function main() {
             var operationName = "Gemini AI: " + prompt.substring(0, 30);
             
             if (newDocument) {
-                processSelection(prompt, newDocument, referenceFiles);
+                processSelection(prompt, newDocument, referenceFiles, generateCount);
             } else {
                 // suspendHistory를 위한 파일 배열 문자열 생성
                 var refFilesStr = "[]";
@@ -3229,7 +3597,7 @@ function main() {
                 }
                 
                 app.activeDocument.suspendHistory(operationName, 
-                    "processSelection('" + prompt.replace(/'/g, "\\'") + "', " + newDocument + ", " + refFilesStr + ")");
+                    "processSelection('" + prompt.replace(/'/g, "\\'") + "', " + newDocument + ", " + refFilesStr + ", " + generateCount + ")");
             }
         } else {
             alert("먼저 프롬프트를 입력해주세요!");

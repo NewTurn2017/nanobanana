@@ -1,0 +1,149 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Nano-Banana-Gemini.jsx'
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Extract version from JSX file
+        id: extract_version
+        run: |
+          # JSX 파일에서 버전 추출
+          VERSION=$(grep 'var PLUGIN_VERSION = ' Nano-Banana-Gemini.jsx | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+          
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.extract_version.outputs.VERSION }}" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.extract_version.outputs.VERSION }} already exists"
+          else
+            echo "EXISTS=false" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.extract_version.outputs.VERSION }} does not exist"
+          fi
+          
+      - name: Get commit messages for changelog
+        if: steps.check_tag.outputs.EXISTS == 'false'
+        id: get_commits
+        run: |
+          # 최근 태그 가져오기
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            # 태그가 없으면 전체 커밋 히스토리
+            COMMITS=$(git log --pretty=format:"- %s" | head -20)
+          else
+            # 마지막 태그 이후의 커밋들
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"- %s")
+          fi
+          
+          # GitHub 환경 변수로 저장 (멀티라인 처리)
+          echo "COMMITS<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      - name: Extract features from commits
+        if: steps.check_tag.outputs.EXISTS == 'false'
+        id: extract_features
+        run: |
+          VERSION="${{ steps.extract_version.outputs.VERSION }}"
+          COMMITS="${{ steps.get_commits.outputs.COMMITS }}"
+          
+          # 커밋 메시지에서 기능 분류
+          FEATURES=""
+          FIXES=""
+          IMPROVEMENTS=""
+          
+          while IFS= read -r line; do
+            if [[ $line == *"feat:"* ]] || [[ $line == *"feature:"* ]] || [[ $line == *"add:"* ]]; then
+              FEATURE_MSG=$(echo "$line" | sed -E 's/^- (feat|feature|add):\s*//')
+              FEATURES="${FEATURES}- ${FEATURE_MSG}\n"
+            elif [[ $line == *"fix:"* ]] || [[ $line == *"bug:"* ]]; then
+              FIX_MSG=$(echo "$line" | sed -E 's/^- (fix|bug):\s*//')
+              FIXES="${FIXES}- ${FIX_MSG}\n"
+            elif [[ $line == *"improve:"* ]] || [[ $line == *"enhancement:"* ]] || [[ $line == *"perf:"* ]]; then
+              IMPROVE_MSG=$(echo "$line" | sed -E 's/^- (improve|enhancement|perf):\s*//')
+              IMPROVEMENTS="${IMPROVEMENTS}- ${IMPROVE_MSG}\n"
+            fi
+          done <<< "$COMMITS"
+          
+          # 릴리스 노트 생성
+          RELEASE_NOTES="# 🎉 Nano Banana v${VERSION}\n\n"
+          
+          if [ -n "$FEATURES" ]; then
+            RELEASE_NOTES="${RELEASE_NOTES}## ✨ 새로운 기능\n${FEATURES}\n"
+          fi
+          
+          if [ -n "$IMPROVEMENTS" ]; then
+            RELEASE_NOTES="${RELEASE_NOTES}## 🔧 개선사항\n${IMPROVEMENTS}\n"
+          fi
+          
+          if [ -n "$FIXES" ]; then
+            RELEASE_NOTES="${RELEASE_NOTES}## 🐛 버그 수정\n${FIXES}\n"
+          fi
+          
+          # 모든 커밋 목록 추가
+          RELEASE_NOTES="${RELEASE_NOTES}## 📝 전체 변경사항\n${COMMITS}\n\n"
+          
+          # 다운로드 링크 추가
+          RELEASE_NOTES="${RELEASE_NOTES}---\n\n"
+          RELEASE_NOTES="${RELEASE_NOTES}### 📦 설치 방법\n"
+          RELEASE_NOTES="${RELEASE_NOTES}1. Nano-Banana-Gemini.jsx 파일을 다운로드합니다\n"
+          RELEASE_NOTES="${RELEASE_NOTES}2. Photoshop Scripts 폴더에 복사합니다:\n"
+          RELEASE_NOTES="${RELEASE_NOTES}   - Windows: \`C:\\Program Files\\Adobe\\Adobe Photoshop [Version]\\Presets\\Scripts\\\`\n"
+          RELEASE_NOTES="${RELEASE_NOTES}   - macOS: \`/Applications/Adobe Photoshop [Version]/Presets/Scripts/\`\n"
+          RELEASE_NOTES="${RELEASE_NOTES}3. Photoshop을 재시작합니다\n"
+          RELEASE_NOTES="${RELEASE_NOTES}4. File > Scripts > Nano-Banana-Gemini 메뉴에서 실행합니다\n\n"
+          
+          # 이전 버전 링크
+          if [ -n "$LAST_TAG" ]; then
+            RELEASE_NOTES="${RELEASE_NOTES}**Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...v${VERSION}"
+          fi
+          
+          # GitHub 환경 변수로 저장
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      - name: Create Release
+        if: steps.check_tag.outputs.EXISTS == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.extract_version.outputs.VERSION }}
+          name: v${{ steps.extract_version.outputs.VERSION }}
+          body: ${{ steps.extract_features.outputs.RELEASE_NOTES }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          files: |
+            Nano-Banana-Gemini.jsx
+            preset.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Summary
+        run: |
+          if [ "${{ steps.check_tag.outputs.EXISTS }}" == "false" ]; then
+            echo "✅ Released version v${{ steps.extract_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Release Notes" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.extract_features.outputs.RELEASE_NOTES }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ Version v${{ steps.extract_version.outputs.VERSION }} already released. No action needed." >> $GITHUB_STEP_SUMMARY
+          fi

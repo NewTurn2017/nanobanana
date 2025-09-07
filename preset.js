@@ -2014,4 +2014,14 @@ var presets = [
     imageCount: 2,
     category: '편집',
   },
+  {
+    id: '3x3-grid',
+    title: '3x3 그리드',
+    description:
+      '한 장의 사진으로 3x3 포토부스 그리드 퍼즐을 만듭니다. 각 사진은 다른 포즈와 표정을 가져야 하며 중복되지 않아야 합니다.',
+    prompt:
+      'Please use this photo to create a 3x3 photo booth grid puzzle. Each photo must feature a different pose and expression—no duplicates allowed. Maintain consistent composition and ensure a natural collage effect.',
+    imageCount: 1,
+    category: '변환',
+  },
 ]

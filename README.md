@@ -1,5 +1,8 @@
 # 🎨 Nano Banana for Photoshop
 
+[![Auto Release](https://github.com/NewTurn2017/nanobanana/actions/workflows/auto-release.yml/badge.svg)](https://github.com/NewTurn2017/nanobanana/actions/workflows/auto-release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/NewTurn2017/nanobanana)](https://github.com/NewTurn2017/nanobanana/releases/latest)
+
 Google Gemini AI를 활용한 Photoshop 이미지 생성 플러그인
 
 ## ⚠️ 중요 안내

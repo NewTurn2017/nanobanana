@@ -1,5 +1,5 @@
 /**
- * Nano Banana for Photoshop v2.3.1 - Google Gemini API 통합 버전
+ * Nano Banana for Photoshop v2.3.2 - Google Gemini API 통합 버전
  * 
  * 제작자: Genie
  * 웹사이트: www.codewithgenie.com
@@ -15,12 +15,13 @@
  * - 보안 API 키 관리
  * - 고급 색상 피커
  * - 자동 업데이트 시스템
+ * - Windows 경로 처리 개선 (v2.3.2)
  */
 
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.3.1";
+var PLUGIN_VERSION = "2.3.2";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -693,7 +694,19 @@ function executeCurl(curlArgs, outputFile) {
     var cmd;
     
     if (CONFIG.IS_WINDOWS) {
-        cmd = 'cmd.exe /c "curl.exe ' + curlArgs + ' > "' + outputFile + '" 2>&1"';
+        // Windows에서 파일 경로 처리 개선
+        // 1. @ 파일 참조가 있는 경우 백슬래시로 변경하고 따옴표 처리
+        curlArgs = curlArgs.replace(/@"([^"]+)"/g, function(match, path) {
+            // 슬래시를 백슬래시로 변경
+            var windowsPath = path.replace(/\//g, '\\');
+            return '@"' + windowsPath + '"';
+        });
+        
+        // 2. outputFile 경로도 백슬래시로 변경
+        var windowsOutputFile = outputFile.replace(/\//g, '\\');
+        
+        // 3. curl 명령어 구성 (이스케이프 처리 개선)
+        cmd = 'cmd.exe /c "curl.exe ' + curlArgs + ' > "' + windowsOutputFile + '" 2>&1"';
     } else {
         cmd = 'curl ' + curlArgs + ' > "' + outputFile + '" 2>&1';
     }
@@ -756,9 +769,11 @@ function encodeImageBase64(imageFile, progressWin) {
                 copySuccess = false;
             }
             
-            // Fallback to system copy if needed
+            // Fallback to system copy if needed - 경로 처리 개선
             if (!copySuccess) {
-                app.system('cmd.exe /c copy /Y "' + imageFile.fsName + '" "' + tempCopy.fsName + '"');
+                var srcPath = imageFile.fsName.replace(/\//g, '\\');
+                var dstPath = tempCopy.fsName.replace(/\//g, '\\');
+                app.system('cmd.exe /c copy /Y "' + srcPath + '" "' + dstPath + '"');
             }
             
             // Check if copy exists
@@ -767,11 +782,21 @@ function encodeImageBase64(imageFile, progressWin) {
                 return null;
             }
             
-            // Windows certutil with temp file
-            var cmd = 'cmd.exe /c "certutil -encode "' + tempCopy.fsName + '" "' + outputFile.fsName + '""';
+            // Windows certutil with temp file - 경로 처리 개선
+            // fsName이 이미 Windows 경로 형식이지만, 추가 검증
+            var srcPath = tempCopy.fsName.replace(/\//g, '\\');
+            var dstPath = outputFile.fsName.replace(/\//g, '\\');
+            
+            // certutil 명령어 구성 - 따옴표 처리 주의
+            var cmd = 'cmd.exe /c "certutil -encode "' + srcPath + '" "' + dstPath + '""';
             app.system(cmd);
             
-            tempCopy.remove();
+            // 임시 파일 제거 시도 (실패해도 계속 진행)
+            try {
+                tempCopy.remove();
+            } catch(e) {
+                // 무시
+            }
             
             if (outputFile.exists) {
                 outputFile.open("r");
@@ -911,12 +936,32 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
         var responseFile = new File(Folder.temp + "/response_" + new Date().getTime() + ".json");
         var apiUrl = CONFIG.API_ENDPOINT + CONFIG.MODEL_ID + ":" + CONFIG.GENERATE_CONTENT_API + "?key=" + CONFIG.API_KEY;
         
+        // Windows에서는 fsName이 이미 백슬래시를 사용하므로 그대로 사용
+        // executeCurl 함수에서 추가로 경로 변환 처리
+        var payloadPath = payloadFile.fsName;
+        
+        // 디버깅: payload 파일 경로 로깅 (개발 시에만)
+        // alert("Payload path: " + payloadPath);
+        
         var curlArgs = '-s -X POST ' +
                        '-H "Content-Type: application/json" ' +
-                       '-d @"' + payloadFile.fsName + '" ' +
+                       '-d @"' + payloadPath + '" ' +
                        '"' + apiUrl + '"';
         
         var response = executeCurl(curlArgs, responseFile.fsName);
+        
+        // 디버깅: payload 파일 내용 확인 (필요시 활성화)
+        /*
+        if (CONFIG.IS_WINDOWS && !response) {
+            payloadFile.open("r");
+            var debugContent = payloadFile.read();
+            payloadFile.close();
+            var debugFile = new File(Folder.temp + "/debug_payload.json");
+            debugFile.open("w");
+            debugFile.write(debugContent);
+            debugFile.close();
+        }
+        */
         
         payloadFile.remove();
         
@@ -1073,8 +1118,11 @@ function saveBase64AsImage(base64Data, outputFile) {
         base64File.close();
         
         if (CONFIG.IS_WINDOWS) {
-            // Windows: certutil을 사용하여 디코드
-            var cmd = 'cmd.exe /c "certutil -decode "' + base64File.fsName + '" "' + outputFile.fsName + '""';
+            // Windows: certutil을 사용하여 디코드 - 경로 처리 개선
+            var srcPath = base64File.fsName.replace(/\//g, '\\');
+            var dstPath = outputFile.fsName.replace(/\//g, '\\');
+            
+            var cmd = 'cmd.exe /c "certutil -decode "' + srcPath + '" "' + dstPath + '""';
             app.system(cmd);
         } else {
             // macOS: base64를 사용하여 디코드
@@ -1082,7 +1130,12 @@ function saveBase64AsImage(base64Data, outputFile) {
             app.system(cmd);
         }
         
-        base64File.remove();
+        // 임시 파일 제거 시도
+        try {
+            base64File.remove();
+        } catch(e) {
+            // 무시
+        }
         
         return outputFile.exists && outputFile.length > 0;
         
@@ -3671,7 +3724,9 @@ SmartUpdater.prototype.replaceFiles = function(downloadedFiles) {
             allSuccess = false;
             if (CONFIG.IS_WINDOWS) {
                 try {
-                    app.system('cmd.exe /c copy /Y "' + sourceFile.fsName + '" "' + targetFile.fsName + '"');
+                    var srcPath = sourceFile.fsName.replace(/\//g, '\\');
+                    var dstPath = targetFile.fsName.replace(/\//g, '\\');
+                    app.system('cmd.exe /c copy /Y "' + srcPath + '" "' + dstPath + '"');
                     allSuccess = true;
                 } catch(e2) {
                     allSuccess = false;

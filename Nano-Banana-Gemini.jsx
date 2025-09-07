@@ -19,7 +19,7 @@
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.2.1";
+var PLUGIN_VERSION = "2.2.2";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -1914,48 +1914,12 @@ function getColorName(color) {
     return closestColor;
 }
 
-// ===== 고급 색상 피커 (Photoshop 네이티브) =====
+// ===== 고급 색상 피커 =====
 
 function createAdvancedColorPicker(initialColor) {
-    try {
-        // 현재 전경색 저장
-        var savedForeground = app.foregroundColor;
-        
-        // 초기 색상을 전경색으로 설정
-        if (initialColor) {
-            var tempColor = new SolidColor();
-            tempColor.rgb.red = initialColor.r;
-            tempColor.rgb.green = initialColor.g;
-            tempColor.rgb.blue = initialColor.b;
-            app.foregroundColor = tempColor;
-        }
-        
-        // Photoshop 네이티브 색상 피커 호출
-        // showColorPicker() 함수를 사용하여 Photoshop의 내장 색상 피커를 표시
-        var result = app.showColorPicker();
-        
-        if (result) {
-            // 사용자가 OK를 클릭한 경우
-            var selectedColor = app.foregroundColor;
-            
-            // 원래 전경색 복원
-            app.foregroundColor = savedForeground;
-            
-            // RGB 값 반환
-            return {
-                r: Math.round(selectedColor.rgb.red),
-                g: Math.round(selectedColor.rgb.green),
-                b: Math.round(selectedColor.rgb.blue)
-            };
-        } else {
-            // 사용자가 취소한 경우
-            app.foregroundColor = savedForeground;
-            return null;
-        }
-    } catch(e) {
-        // 네이티브 피커가 실패한 경우 폴백으로 간단한 다이얼로그 사용
-        return createFallbackColorPicker(initialColor);
-    }
+    // Photoshop ExtendScript에서는 네이티브 색상 피커를 직접 호출할 수 없으므로
+    // 커스텀 색상 피커를 사용합니다
+    return createFallbackColorPicker(initialColor);
 }
 
 // 폴백 색상 피커 (네이티브 피커가 작동하지 않을 경우)

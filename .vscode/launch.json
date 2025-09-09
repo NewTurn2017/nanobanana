@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "extendscript-debug",
+            "request": "launch",
+            "name": "Debug Nano-Banana",
+            "program": "${workspaceFolder}/Nano-Banana-Gemini.jsx",
+            "targetSpecifier": "photoshop-25.0",
+            "stopOnEntry": false,
+            "trace": true
+        },
+        {
+            "type": "extendscript-debug",
+            "request": "launch",
+            "name": "Test Debug Helper",
+            "program": "${workspaceFolder}/enable-debug.jsx",
+            "targetSpecifier": "photoshop-25.0"
+        }
+    ]
+}

@@ -17,7 +17,8 @@
       "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_mHZQiR/**)",
       "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_LydReh/**)",
       "Bash(chmod:*)",
-      "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_XJx4yc/**)"
+      "Read(//var/folders/cj/vgk2yz_110z5nx4mqvhfz6yh0000gn/T/TemporaryItems/NSIRD_screencaptureui_XJx4yc/**)",
+      "mcp__sequential-thinking__sequentialthinking"
     ],
     "deny": [],
     "ask": []

@@ -639,108 +639,13 @@ function createProgressWindow() {
 
 // ===== CURL 감지 =====
 
-// Windows에서 curl.exe 경로 찾기
-var CURL_PATH = null;  // 전역 변수로 찾은 curl 경로 저장
-
-function findCurlPath() {
-    if (!CONFIG.IS_WINDOWS) {
-        return "curl";  // macOS/Linux는 그냥 curl 사용
-    }
-    
-    // 이미 찾은 경로가 있으면 재사용
-    if (CURL_PATH) {
-        return CURL_PATH;
-    }
-    
-    var testFile = new File(Folder.temp + "/curl_path_" + new Date().getTime() + ".txt");
-    
-    // 1단계: where 명령으로 curl 위치 찾기
-    try {
-        var whereCmd = 'cmd.exe /c "where curl.exe > "' + testFile.fsName + '" 2>&1"';
-        app.system(whereCmd);
-        
-        if (testFile.exists) {
-            testFile.open("r");
-            var result = testFile.read();
-            testFile.close();
-            
-            if (result && result.indexOf("curl.exe") > -1) {
-                // 첫 번째 줄의 경로 사용
-                var lines = result.split("\n");
-                if (lines[0] && lines[0].indexOf("curl.exe") > -1) {
-                    CURL_PATH = lines[0].replace(/\r|\n/g, "").replace(/\s+$/, "");
-                    testFile.remove();
-                    return CURL_PATH;
-                }
-            }
-            testFile.remove();
-        }
-    } catch(e) {}
-    
-    // 2단계: 알려진 경로들 직접 시도
-    var possiblePaths = [
-        "C:\\Windows\\System32\\curl.exe",
-        "C:\\Windows\\SysWOW64\\curl.exe",
-        "C:\\Windows\\SysNative\\curl.exe",  // 32비트 앱에서 64비트 System32 접근
-        "%SystemRoot%\\System32\\curl.exe"
-    ];
-    
-    for (var i = 0; i < possiblePaths.length; i++) {
-        try {
-            var testCmd = 'cmd.exe /c "' + possiblePaths[i] + ' --version > "' + testFile.fsName + '" 2>&1"';
-            app.system(testCmd);
-            
-            if (testFile.exists) {
-                testFile.open("r");
-                var result = testFile.read();
-                testFile.close();
-                testFile.remove();
-                
-                if (result && result.indexOf("curl") > -1) {
-                    CURL_PATH = possiblePaths[i];
-                    return CURL_PATH;
-                }
-            }
-        } catch(e) {}
-    }
-    
-    // 3단계: PowerShell로 시도
-    try {
-        var psCmd = 'powershell.exe -Command "curl --version" > "' + testFile.fsName + '" 2>&1';
-        app.system(psCmd);
-        
-        if (testFile.exists) {
-            testFile.open("r");
-            var result = testFile.read();
-            testFile.close();
-            testFile.remove();
-            
-            if (result && result.indexOf("curl") > -1) {
-                CURL_PATH = "powershell_curl";  // 특별한 플래그로 PowerShell 사용 표시
-                return CURL_PATH;
-            }
-        }
-    } catch(e) {}
-    
-    // 모두 실패하면 기본값
-    return "curl.exe";
-}
-
 function checkCurlAvailable() {
     try {
         var testFile = new File(Folder.temp + "/curl_test_" + new Date().getTime() + ".txt");
         
         var cmd;
         if (CONFIG.IS_WINDOWS) {
-            var curlPath = findCurlPath();
-            
-            // PowerShell을 사용해야 하는 경우
-            if (curlPath === "powershell_curl") {
-                cmd = 'powershell.exe -Command "curl --version" > "' + testFile.fsName + '" 2>&1';
-            } else {
-                // 일반 cmd 사용
-                cmd = 'cmd.exe /c "' + curlPath + ' --version" > "' + testFile.fsName + '" 2>&1';
-            }
+            cmd = 'cmd.exe /c "curl.exe --version > "' + testFile.fsName + '" 2>&1"';
         } else {
             cmd = 'curl --version > "' + testFile.fsName + '" 2>&1';
         }
@@ -789,9 +694,6 @@ function executeCurl(curlArgs, outputFile) {
     var cmd;
     
     if (CONFIG.IS_WINDOWS) {
-        // curl 경로 찾기 (캐시된 경로 사용)
-        var curlPath = findCurlPath();
-        
         // Windows에서 파일 경로 처리 개선
         // 1. @ 파일 참조가 있는 경우 백슬래시로 변경하고 따옴표 처리
         curlArgs = curlArgs.replace(/@"([^"]+)"/g, function(match, path) {
@@ -803,16 +705,8 @@ function executeCurl(curlArgs, outputFile) {
         // 2. outputFile 경로도 백슬래시로 변경
         var windowsOutputFile = outputFile.replace(/\//g, '\\');
         
-        // 3. PowerShell을 사용해야 하는 경우
-        if (curlPath === "powershell_curl") {
-            // PowerShell의 curl (Invoke-WebRequest alias)을 사용
-            // 참고: PowerShell의 curl은 실제 curl과 다르므로 실제 curl.exe를 호출
-            cmd = 'powershell.exe -Command "& { $ProgressPreference = \'SilentlyContinue\'; curl.exe ' + 
-                  curlArgs.replace(/"/g, '`"') + ' }" > "' + windowsOutputFile + '" 2>&1';
-        } else {
-            // 4. 일반 cmd.exe 사용 (찾은 curl 경로 사용)
-            cmd = 'cmd.exe /c "' + curlPath + ' ' + curlArgs + ' > "' + windowsOutputFile + '" 2>&1"';
-        }
+        // 3. curl 명령어 구성 (이스케이프 처리 개선)
+        cmd = 'cmd.exe /c "curl.exe ' + curlArgs + ' > "' + windowsOutputFile + '" 2>&1"';
         
         // CMD 창 없이 조용히 실행
         executeWindowsCommandSilently(cmd);
@@ -946,6 +840,10 @@ function encodeImageBase64(imageFile, progressWin, isReference, refIndex) {
                 
                 
                 // Save raw output for debugging
+                var debugFile = new File(Folder.desktop + "/nano-banana-base64-raw.txt");
+                debugFile.open("w");
+                debugFile.write(data);
+                debugFile.close();
                 
                 outputFile.remove();
                 
@@ -958,6 +856,7 @@ function encodeImageBase64(imageFile, progressWin, isReference, refIndex) {
                 // 참조 이미지 성공 로그
                 if (isReference) {
                     try {
+                        var refSuccessFile = new File(Folder.desktop + "/nano-banana-ref-success.txt");
                         refSuccessFile.open("a");
                         refSuccessFile.writeln("[" + new Date().toTimeString().substr(0,8) + "] Reference " + refIndex + " encoded successfully");
                         refSuccessFile.writeln("  File: " + imageFile.fsName);
@@ -1027,29 +926,69 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
     // 디버깅 정보를 파일로 저장 (항상 실행 - Windows 확인용)
     try {
         var debugEnabled = true; // 강제 디버깅 활성화
+        var simpleDebugFile = new File(Folder.desktop + "/nano-banana-simple-debug.txt");
+        simpleDebugFile.open("w");
+        simpleDebugFile.writeln("=== NANO-BANANA DEBUG ===");
+        simpleDebugFile.writeln("Time: " + new Date().toString());
+        simpleDebugFile.writeln("OS: " + $.os);
+        simpleDebugFile.writeln("Is Windows: " + ($.os.indexOf("Windows") !== -1));
+        simpleDebugFile.writeln("CONFIG.IS_WINDOWS: " + CONFIG.IS_WINDOWS);
+        simpleDebugFile.writeln("Desktop Path: " + Folder.desktop.fsName);
+        simpleDebugFile.writeln("Temp Path: " + Folder.temp.fsName);
+        simpleDebugFile.writeln("Reference Files Count: " + (referenceFiles ? referenceFiles.length : 0));
         if (referenceFiles && referenceFiles.length > 0) {
+            simpleDebugFile.writeln("\n=== REFERENCE FILES ===");
             for (var k = 0; k < referenceFiles.length; k++) {
+                simpleDebugFile.writeln("Ref " + (k+1) + ": " + (referenceFiles[k] ? referenceFiles[k].fsName : "NULL"));
                 if (referenceFiles[k]) {
+                    simpleDebugFile.writeln("  Exists: " + referenceFiles[k].exists);
+                    simpleDebugFile.writeln("  Size: " + referenceFiles[k].length + " bytes");
                 }
             }
         } else {
+            simpleDebugFile.writeln("NO REFERENCE FILES PROVIDED");
         }
+        simpleDebugFile.writeln("\n=== PROCESSING LOG ===");
+        simpleDebugFile.close();
         
         // 알림 표시
         if (debugEnabled) {
+            alert("Debug file created at:\n" + simpleDebugFile.fsName);
         }
     } catch(e) {
+        alert("Debug file creation failed: " + e.message);
     }
     
     // Windows 디버깅 로그 파일 초기화
+    var debugLogFile = null;
     if (CONFIG.IS_WINDOWS) {
         try {
+            debugLogFile = new File(Folder.desktop + "/nano-banana-api-debug.log");
+            debugLogFile.open("w");
+            debugLogFile.writeln("=== NANO-BANANA API CALL DEBUG LOG ===");
+            debugLogFile.writeln("Timestamp: " + new Date().toString());
+            debugLogFile.writeln("OS: " + $.os);
+            debugLogFile.writeln("Photoshop Version: " + app.version);
+            debugLogFile.writeln("\n=== Input Information ===");
+            debugLogFile.writeln("Prompt: " + prompt);
+            debugLogFile.writeln("Main Image: " + imageFile.fsName);
+            debugLogFile.writeln("Main Image Exists: " + imageFile.exists);
+            debugLogFile.writeln("Main Image Size: " + (imageFile.exists ? imageFile.length : "N/A"));
+            debugLogFile.writeln("Reference Files Count: " + (referenceFiles ? referenceFiles.length : 0));
             
             if (referenceFiles && referenceFiles.length > 0) {
+                debugLogFile.writeln("\n=== Reference Files ===");
                 for (var j = 0; j < referenceFiles.length; j++) {
+                    debugLogFile.writeln("Reference " + (j+1) + ": " + (referenceFiles[j] ? referenceFiles[j].fsName : "null"));
+                    debugLogFile.writeln("  Exists: " + (referenceFiles[j] && referenceFiles[j].exists));
+                    debugLogFile.writeln("  Size: " + (referenceFiles[j] && referenceFiles[j].exists ? referenceFiles[j].length : "N/A"));
                 }
             }
+            debugLogFile.writeln("\n=== Encoding Process ===");
+            debugLogFile.close();
         } catch(e) {
+            alert("Debug log file creation failed: " + e.message + "\nPath: " + Folder.desktop.fsName);
+            debugLogFile = null;
         }
     }
     
@@ -1058,9 +997,21 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
         if (PROCESS_CANCELLED) return null;
         
         // 메인 이미지 인코딩
+        if (CONFIG.IS_WINDOWS && debugLogFile) {
+            debugLogFile.open("a");
+            debugLogFile.writeln("\n[" + new Date().toTimeString().substr(0,8) + "] Starting main image encoding...");
+            debugLogFile.close();
+        }
         
         var base64Data = encodeImageBase64(imageFile, progressWin, false, 0);
         
+        if (CONFIG.IS_WINDOWS && debugLogFile) {
+            debugLogFile.open("a");
+            debugLogFile.writeln("[" + new Date().toTimeString().substr(0,8) + "] Main image encoding result:");
+            debugLogFile.writeln("  Base64 Length: " + (base64Data ? base64Data.length : "NULL"));
+            debugLogFile.writeln("  First 100 chars: " + (base64Data ? base64Data.substring(0, 100) : "NULL"));
+            debugLogFile.close();
+        }
         if (!base64Data || PROCESS_CANCELLED) {
             if (!PROCESS_CANCELLED) alert("이미지를 인코딩할 수 없습니다");
             return null;
@@ -1087,15 +1038,41 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
         if (referenceFiles && referenceFiles.length > 0) {
             // 참조 이미지 처리 시작 - 항상 디버깅
             try {
+                var simpleDebugFile = new File(Folder.desktop + "/nano-banana-simple-debug.txt");
+                simpleDebugFile.open("a");
+                simpleDebugFile.writeln("\n=== REFERENCE IMAGE PROCESSING START ===");
+                simpleDebugFile.writeln("Processing " + referenceFiles.length + " reference images...");
+                simpleDebugFile.writeln("Time: " + new Date().toTimeString().substr(0,8));
+                simpleDebugFile.close();
             } catch(e) {
+                alert("Debug update failed: " + e.message);
             }
             
+            if (CONFIG.IS_WINDOWS && debugLogFile) {
+                debugLogFile.open("a");
+                debugLogFile.writeln("\n=== Processing Reference Images ===");
+                debugLogFile.close();
+            }
             
             for (var i = 0; i < referenceFiles.length; i++) {
                 if (referenceFiles[i] && referenceFiles[i].exists) {
                     // 각 참조 이미지 처리 - 항상 디버깅
                     try {
+                        var simpleDebugFile = new File(Folder.desktop + "/nano-banana-simple-debug.txt");
+                        simpleDebugFile.open("a");
+                        simpleDebugFile.writeln("\n[REF " + (i+1) + "] Starting encode...");
+                        simpleDebugFile.writeln("  File: " + referenceFiles[i].fsName);
+                        simpleDebugFile.writeln("  Exists: " + referenceFiles[i].exists);
+                        simpleDebugFile.writeln("  Size: " + referenceFiles[i].length + " bytes");
+                        simpleDebugFile.close();
                     } catch(e) {}
+                    if (CONFIG.IS_WINDOWS && debugLogFile) {
+                        debugLogFile.open("a");
+                        debugLogFile.writeln("\n[" + new Date().toTimeString().substr(0,8) + "] Encoding reference " + (i+1) + "...");
+                        debugLogFile.writeln("  File: " + referenceFiles[i].fsName);
+                        debugLogFile.writeln("  Size: " + referenceFiles[i].length + " bytes");
+                        debugLogFile.close();
+                    }
                     
                     if (progressWin) progressWin.updateStatus("참조 이미지 " + (i + 1) + "/" + referenceFiles.length + " 인코딩 중...");
                     var refBase64Data = encodeImageBase64(referenceFiles[i], progressWin, true, i+1);
@@ -1103,9 +1080,20 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
                     // Windows 디버깅 - 인코딩 결과
                     if ($.os.indexOf("Windows") !== -1) {
                         try {
+                            var simpleDebugFile = new File(Folder.desktop + "/nano-banana-simple-debug.txt");
+                            simpleDebugFile.open("a");
+                            simpleDebugFile.writeln("  Result: " + (refBase64Data ? "SUCCESS (" + refBase64Data.length + " chars)" : "FAILED"));
+                            simpleDebugFile.close();
                         } catch(e) {}
                     }
                     
+                    if (CONFIG.IS_WINDOWS && debugLogFile) {
+                        debugLogFile.open("a");
+                        debugLogFile.writeln("  Encoding result: " + (refBase64Data ? "SUCCESS" : "FAILED"));
+                        debugLogFile.writeln("  Base64 Length: " + (refBase64Data ? refBase64Data.length : "NULL"));
+                        debugLogFile.writeln("  First 50 chars: " + (refBase64Data ? refBase64Data.substring(0, 50) : "NULL"));
+                        debugLogFile.close();
+                    }
                     
                     if (refBase64Data) {
                         var refMime = getMimeType(referenceFiles[i]);
@@ -1113,11 +1101,27 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
                         
                         // 항상 디버깅 (참조 이미지 추가 확인)
                         try {
+                            var simpleDebugFile = new File(Folder.desktop + "/nano-banana-simple-debug.txt");
+                            simpleDebugFile.open("a");
+                            simpleDebugFile.writeln("  [SUCCESS] Reference " + (i+1) + " added to payload");
+                            simpleDebugFile.writeln("    MIME: " + refMime);
+                            simpleDebugFile.writeln("    Data length: " + refBase64Data.length);
+                            simpleDebugFile.close();
                         } catch(e) {}
                         
+                        if (CONFIG.IS_WINDOWS && debugLogFile) {
+                            debugLogFile.open("a");
+                            debugLogFile.writeln("  MIME Type: " + refMime);
+                            debugLogFile.writeln("  Added to payload: YES");
+                            debugLogFile.close();
+                        }
                     } else {
                         // 인코딩 실패 로그
                         try {
+                            var simpleDebugFile = new File(Folder.desktop + "/nano-banana-simple-debug.txt");
+                            simpleDebugFile.open("a");
+                            simpleDebugFile.writeln("  [FAILED] Reference " + (i+1) + " NOT added to payload");
+                            simpleDebugFile.close();
                         } catch(e) {}
                     }
                 }
@@ -1136,17 +1140,155 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
                           '"topK":40' +
                           '}}';
         
-        // 페이로드를 파일로 저장
+        // Windows 디버깅: 페이로드 정보 기록
+        if (CONFIG.IS_WINDOWS && debugLogFile) {
+            debugLogFile.open("a");
+            debugLogFile.writeln("\n=== Payload Construction ===");
+            debugLogFile.writeln("Main Image MIME: " + mainMime);
+            debugLogFile.writeln("Total Payload Length: " + jsonPayload.length + " chars");
+            debugLogFile.writeln("\nPayload Structure:");
+            
+            // parts 배열의 요소 개수 계산
+            var partsCount = (partsArray.match(/\{/g) || []).length;
+            debugLogFile.writeln("  Parts Count: " + partsCount);
+            debugLogFile.writeln("  Has Text Part: YES");
+            debugLogFile.writeln("  Reference Images: " + ((referenceFiles && referenceFiles.length > 0) ? referenceFiles.length : 0));
+            debugLogFile.writeln("  Main Image: YES");
+            
+            // 페이로드 샘플 저장 (처음 500자와 마지막 100자)
+            debugLogFile.writeln("\nPayload Sample (first 500 chars):");
+            debugLogFile.writeln(jsonPayload.substring(0, 500));
+            debugLogFile.writeln("\nPayload Sample (last 100 chars):");
+            debugLogFile.writeln(jsonPayload.substring(jsonPayload.length - 100));
+            debugLogFile.close();
+        }
+        
+        // 페이로드를 파일에 저장
         var payloadFile = new File(Folder.temp + "/payload_" + new Date().getTime() + ".json");
         payloadFile.open("w");
         payloadFile.write(jsonPayload);
         payloadFile.close();
         
+        // 페이로드를 항상 저장 (디버깅용)
+        try {
+            var fullPayloadDebugFile = new File(Folder.desktop + "/nano-banana-payload-full.json");
+            fullPayloadDebugFile.open("w");
+            fullPayloadDebugFile.write(jsonPayload);
+            fullPayloadDebugFile.close();
+            
+            // 페이로드 구조 확인
+            var partsCount = (partsArray.match(/inlineData/g) || []).length;
+            var refCount = (referenceFiles && referenceFiles.length > 0) ? referenceFiles.length : 0;
+            var actualRefCount = 0;
+            
+            // 참조 이미지 데이터 포함 확인
+            if (referenceFiles && referenceFiles.length > 0) {
+                for (var k = 0; k < referenceFiles.length; k++) {
+                    // 각 참조 이미지의 데이터가 페이로드에 포함되었는지 확인
+                    if (jsonPayload.indexOf('"mime_type":"image') > jsonPayload.indexOf('"text"')) {
+                        actualRefCount++;
+                    }
+                }
+            }
+            
+            // 페이로드 구조 분석
+            var textIndex = jsonPayload.indexOf('"text"');
+            var mainImageIndex = jsonPayload.indexOf(base64Data.substring(0, 20));
+            
+            // 상세 디버그 정보 작성
+            var payloadAnalysis = new File(Folder.desktop + "/nano-banana-payload-analysis.txt");
+            payloadAnalysis.open("w");
+            payloadAnalysis.writeln("=== PAYLOAD ANALYSIS ===");
+            payloadAnalysis.writeln("Time: " + new Date().toString());
+            payloadAnalysis.writeln("\n=== STRUCTURE ===");
+            payloadAnalysis.writeln("Total Payload Size: " + jsonPayload.length + " chars");
+            payloadAnalysis.writeln("InlineData Parts: " + partsCount);
+            payloadAnalysis.writeln("Expected Parts: 1 text + 1 main + " + refCount + " refs = " + (1 + refCount));
+            payloadAnalysis.writeln("\n=== ORDER CHECK ===");
+            payloadAnalysis.writeln("Text Position: " + textIndex);
+            payloadAnalysis.writeln("Main Image Position: " + mainImageIndex);
+            payloadAnalysis.writeln("Order Correct: " + (textIndex < mainImageIndex ? "YES" : "NO"));
+            payloadAnalysis.writeln("\n=== REFERENCE IMAGES ===");
+            payloadAnalysis.writeln("Provided: " + refCount);
+            payloadAnalysis.writeln("Encoded Successfully: " + actualRefCount);
+            
+            // 각 부분의 크기 계산
+            var parts = partsArray.split(',');
+            payloadAnalysis.writeln("\n=== PARTS BREAKDOWN ===");
+            for (var p = 0; p < parts.length && p < 10; p++) {
+                var partSize = parts[p].length;
+                var partType = parts[p].indexOf('"text"') > -1 ? "TEXT" : "IMAGE";
+                payloadAnalysis.writeln("Part " + (p+1) + ": " + partType + " (" + partSize + " chars)");
+            }
+            
+            payloadAnalysis.writeln("\n=== VALIDATION ===");
+            payloadAnalysis.writeln("Has Text: " + (textIndex > -1 ? "YES" : "NO"));
+            payloadAnalysis.writeln("Has Main Image: " + (mainImageIndex > -1 ? "YES" : "NO"));
+            payloadAnalysis.writeln("Reference Images Included: " + (actualRefCount > 0 ? "YES (" + actualRefCount + ")" : "NO"));
+            payloadAnalysis.close();
+            
+            // 문제 감지 알림
+            var problemDetected = false;
+            var problemMessage = "";
+            
+            if (partsCount !== (1 + refCount)) {
+                problemDetected = true;
+                problemMessage = "\n\n⚠️ PROBLEM DETECTED:\n";
+                problemMessage += "Expected " + (1 + refCount) + " image parts\n";
+                problemMessage += "But found only " + partsCount + " parts\n";
+                
+                if (refCount > 0 && partsCount === 1) {
+                    problemMessage += "\nReference images were NOT included in payload!";
+                }
+            }
+            
+            alert("Payload saved and analyzed!\n\nFiles created on desktop:\n" +
+                  "1. nano-banana-payload-full.json\n" +
+                  "2. nano-banana-payload-analysis.txt\n" +
+                  "3. nano-banana-simple-debug.txt\n" +
+                  "4. nano-banana-debug.log\n" +
+                  "5. nano-banana-final-summary.txt\n\n" +
+                  "Parts in payload: " + partsCount + " (Expected: " + (1 + refCount) + ")" +
+                  problemMessage);
+            var mainImageIndex = jsonPayload.indexOf(base64Data.substring(0, 20));
+            
+            alert("Payload Debug Info:\n" +
+                  "OS: " + $.os + "\n" +
+                  "Total images in payload: " + partsCount + "\n" +
+                  "Reference files provided: " + refCount + "\n" +
+                  "Payload length: " + jsonPayload.length + " chars\n" +
+                  "Text at: " + textIndex + ", Main at: " + mainImageIndex + "\n" +
+                  "File saved: " + fullPayloadDebugFile.fsName);
+        } catch(e) {
+            alert("Failed to save payload: " + e.message);
+        }
+            
+            if (debugLogFile) {
+                debugLogFile.open("a");
+                debugLogFile.writeln("\nFull payload saved to: " + fullPayloadDebugFile.fsName);
+                debugLogFile.writeln("Payload file: " + payloadFile.fsName);
+                debugLogFile.writeln("Payload file exists: " + payloadFile.exists);
+                debugLogFile.writeln("Payload file size: " + payloadFile.length + " bytes");
+                debugLogFile.close();
+            }
+        
+     
+        
         // 최종 확인 메시지 (참조 이미지 포함 여부)
         try {
+            var finalSummaryFile = new File(Folder.desktop + "/nano-banana-final-summary.txt");
+            finalSummaryFile.open("w");
+            finalSummaryFile.writeln("=== FINAL API CALL SUMMARY ===");
+            finalSummaryFile.writeln("Time: " + new Date().toString());
+            finalSummaryFile.writeln("\n=== INPUT ===");
+            finalSummaryFile.writeln("Prompt: " + prompt);
+            finalSummaryFile.writeln("Main Image: " + imageFile.fsName);
+            finalSummaryFile.writeln("Reference Images Provided: " + (referenceFiles ? referenceFiles.length : 0));
             
             if (referenceFiles && referenceFiles.length > 0) {
+                finalSummaryFile.writeln("\n=== REFERENCE IMAGES STATUS ===");
                 for (var s = 0; s < referenceFiles.length; s++) {
+                    finalSummaryFile.writeln("Reference " + (s+1) + ": " + (referenceFiles[s] ? referenceFiles[s].fsName : "NULL"));
                 }
             }
             
@@ -1154,18 +1296,33 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
             var actualImageParts = (partsArray.match(/inlineData/g) || []).length;
             var hasTextPart = partsArray.indexOf('"text"') > -1;
             
+            finalSummaryFile.writeln("\n=== PAYLOAD CONTENTS ===");
+            finalSummaryFile.writeln("Text Part: " + (hasTextPart ? "YES" : "NO"));
+            finalSummaryFile.writeln("Image Parts: " + actualImageParts);
+            finalSummaryFile.writeln("Expected: 1 main + " + (referenceFiles ? referenceFiles.length : 0) + " refs = " + (1 + (referenceFiles ? referenceFiles.length : 0)));
+            finalSummaryFile.writeln("Match: " + (actualImageParts === (1 + (referenceFiles ? referenceFiles.length : 0)) ? "YES" : "NO - PROBLEM DETECTED!"));
             
+            finalSummaryFile.writeln("\n=== PAYLOAD STRUCTURE ===");
+            finalSummaryFile.writeln("Payload Size: " + jsonPayload.length + " characters");
+            finalSummaryFile.writeln("Payload File: " + payloadFile.fsName);
             
             // 각 부분의 크기 계산
             var partsSplit = partsArray.split(',{"inlineData"');
+            finalSummaryFile.writeln("\n=== PARTS SIZES ===");
             for (var ps = 0; ps < partsSplit.length && ps < 5; ps++) {
                 var partLength = partsSplit[ps].length;
+                finalSummaryFile.writeln("Part " + (ps+1) + ": " + partLength + " chars");
             }
             
+            finalSummaryFile.writeln("\n=== CONCLUSION ===");
             if (actualImageParts === (1 + (referenceFiles ? referenceFiles.length : 0))) {
+                finalSummaryFile.writeln("SUCCESS: All images included in payload");
             } else {
+                finalSummaryFile.writeln("PROBLEM: Not all images were included!");
+                finalSummaryFile.writeln("Expected " + (1 + (referenceFiles ? referenceFiles.length : 0)) + " images but got " + actualImageParts);
             }
             
+            finalSummaryFile.close();
         } catch(e) {
             alert("Failed to create final summary: " + e.message);
         }
@@ -1186,10 +1343,31 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
                        '"' + apiUrl + '"';
         
         // Windows 디버깅: curl 명령 정보 기록
+        if (CONFIG.IS_WINDOWS && debugLogFile) {
+            debugLogFile.open("a");
+            debugLogFile.writeln("\n=== API Request Details ===");
+            debugLogFile.writeln("API URL: " + apiUrl.substring(0, 50) + "...[KEY HIDDEN]");
+            debugLogFile.writeln("Payload Path: " + payloadPath);
+            debugLogFile.writeln("Response File: " + responseFile.fsName);
+            debugLogFile.writeln("\nCurl Arguments:");
+            debugLogFile.writeln(curlArgs.substring(0, 200) + "...");
+            debugLogFile.writeln("\n[" + new Date().toTimeString().substr(0,8) + "] Executing curl command...");
+            debugLogFile.close();
+        }
         
         var response = executeCurl(curlArgs, responseFile.fsName);
         
         // Windows 디버깅: curl 실행 결과 기록
+        if (CONFIG.IS_WINDOWS && debugLogFile) {
+            debugLogFile.open("a");
+            debugLogFile.writeln("[" + new Date().toTimeString().substr(0,8) + "] Curl execution completed");
+            debugLogFile.writeln("Response received: " + (response ? "YES" : "NO"));
+            if (response) {
+                debugLogFile.writeln("Response length: " + response.length + " chars");
+                debugLogFile.writeln("Response sample (first 200 chars): " + response.substring(0, 200));
+            }
+            debugLogFile.close();
+        }
         
         // 디버깅: payload 파일 내용 확인 (필요시 활성화)
         /*
@@ -1197,25 +1375,49 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
             payloadFile.open("r");
             var debugContent = payloadFile.read();
             payloadFile.close();
+            var debugFile = new File(Folder.temp + "/debug_payload.json");
+            debugFile.open("w");
+            debugFile.write(debugContent);
+            debugFile.close();
         }
         */
         
-        // 페이로드 파일 정리
-        if (payloadFile && payloadFile.exists) {
-            try {
-                payloadFile.remove();
-            } catch(e) {
-                // 파일 제거 실패 무시
-            }
+        // Windows 디버깅: 정리 전 최종 상태 기록
+        if (CONFIG.IS_WINDOWS && debugLogFile) {
+            debugLogFile.open("a");
+            debugLogFile.writeln("\n=== Cleanup ===");
+            debugLogFile.writeln("Removing payload file: " + payloadFile.fsName);
+            debugLogFile.writeln("\n=== END OF DEBUG LOG ===");
+            debugLogFile.writeln("Timestamp: " + new Date().toString());
+            debugLogFile.writeln("\nDEBUG FILES SAVED TO DESKTOP:");
+            debugLogFile.writeln("1. nano-banana-api-debug.log (this file)");
+            debugLogFile.writeln("2. nano-banana-payload-full.json (complete payload)");
+            debugLogFile.writeln("3. nano-banana-debug.log (encoding debug log)");
+            debugLogFile.close();
         }
+        
+        payloadFile.remove();
         
         if (!response || PROCESS_CANCELLED) {
             if (!PROCESS_CANCELLED) alert("API 응답 없음");
             return null;
         }
         
-        // 에러 확인
+        // 에러 확인 및 디버깅
         if (response.indexOf("error") > -1) {
+            // 디버그: 실제 응답 내용 확인
+            // 바탕화면에 디버그 파일 생성 (찾기 쉽도록)
+            var desktopPath = Folder.desktop.fsName;
+            var debugFile = new File(desktopPath + "/gemini_error_response.txt");
+            debugFile.open("w");
+            debugFile.writeln("=== Gemini API Error Response ===");
+            debugFile.writeln("Timestamp: " + new Date().toString());
+            debugFile.writeln("Temp folder path: " + Folder.temp.fsName);
+            debugFile.writeln("Response length: " + response.length);
+            debugFile.writeln("Response content:");
+            debugFile.writeln(response);
+            debugFile.close();
+            
             // 더 구체적인 에러 메시지
             var errorMsg = "API 오류가 발생했습니다.\n\n";
             
@@ -1233,9 +1435,12 @@ function callAPI(imageFile, prompt, progressWin, referenceFiles) {
                     }
                 }
             } catch(parseError) {
-                // JSON 파싱 실패 시 간단한 메시지
-                errorMsg += "API 응답을 처리할 수 없습니다.";
+                // JSON 파싱 실패 시 원본 응답 일부 표시
+                errorMsg += "응답: " + response.substring(0, 200) + "...";
             }
+            
+            errorMsg += "\n\n디버그 파일이 바탕화면에 생성되었습니다:\n" + debugFile.fsName;
+            errorMsg += "\n\nTemp 폴더 위치: " + Folder.temp.fsName;
             
             alert(errorMsg);
             return null;
@@ -1259,6 +1464,11 @@ function processGeminiResponse(response, progressWin) {
         var textContent = "";
         
         // 디버그: 응답 저장
+        var debugFile = new File(Folder.temp + "/gemini_response_debug.txt");
+        debugFile.open("w");
+        debugFile.encoding = "UTF-8";
+        debugFile.write(response);
+        debugFile.close();
         
         // 스트리밍 응답은 여러 JSON 객체가 쉼표로 구분되거나 배열로 올 수 있음
         var chunks = [];
@@ -1359,6 +1569,7 @@ function processGeminiResponse(response, progressWin) {
             alert("텍스트 응답:\n" + textContent);
             return null;
         } else {
+            alert("응답에서 이미지나 텍스트를 찾을 수 없습니다.\n디버그 파일: " + debugFile.fsName);
             return null;
         }
         

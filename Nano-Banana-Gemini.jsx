@@ -1,5 +1,5 @@
 /**
- * Nano Banana for Photoshop v2.3.2 - Google Gemini API 통합 버전
+ * Nano Banana for Photoshop v2.3.3 - Google Gemini API 통합 버전
  * 
  * 제작자: Genie
  * 웹사이트: www.codewithgenie.com
@@ -15,13 +15,13 @@
  * - 보안 API 키 관리
  * - 고급 색상 피커
  * - 자동 업데이트 시스템
- * - Windows 경로 처리 개선 (v2.3.2)
+ * - Windows PowerShell curl alias 문제 해결 (v2.3.3)
  */
 
 #target photoshop
 
 // ===== 버전 정보 =====
-var PLUGIN_VERSION = "2.3.2";
+var PLUGIN_VERSION = "2.3.3";
 var AUTO_UPDATE_ENABLED = true;
 var UPDATE_CHECK_URL = "https://api.github.com/repos/NewTurn2017/nanobanana/releases/latest";
 
@@ -654,9 +654,9 @@ function findCurlPath() {
     
     var testFile = new File(Folder.temp + "/curl_path_" + new Date().getTime() + ".txt");
     
-    // 1단계: where 명령으로 curl 위치 찾기
+    // 1단계: where.exe 명령으로 curl.exe 위치 찾기 (PowerShell alias 회피)
     try {
-        var whereCmd = 'cmd.exe /c "where curl.exe > "' + testFile.fsName + '" 2>&1"';
+        var whereCmd = 'cmd.exe /c "where.exe curl.exe > "' + testFile.fsName + '" 2>&1"';
         app.system(whereCmd);
         
         if (testFile.exists) {
@@ -665,8 +665,17 @@ function findCurlPath() {
             testFile.close();
             
             if (result && result.indexOf("curl.exe") > -1) {
-                // 첫 번째 줄의 경로 사용
-                var lines = result.split("\n");
+                // Windows\System32의 curl.exe를 우선적으로 사용
+                var lines = result.split(/\r?\n/);
+                for (var i = 0; i < lines.length; i++) {
+                    var line = lines[i].replace(/\r|\n/g, "").replace(/\s+$/, "");
+                    if (line && line.indexOf("System32") > -1 && line.indexOf("curl.exe") > -1) {
+                        CURL_PATH = line;
+                        testFile.remove();
+                        return CURL_PATH;
+                    }
+                }
+                // System32에 없으면 첫 번째 결과 사용
                 if (lines[0] && lines[0].indexOf("curl.exe") > -1) {
                     CURL_PATH = lines[0].replace(/\r|\n/g, "").replace(/\s+$/, "");
                     testFile.remove();
@@ -677,12 +686,12 @@ function findCurlPath() {
         }
     } catch(e) {}
     
-    // 2단계: 알려진 경로들 직접 시도
+    // 2단계: 알려진 경로들 직접 시도 (curl.exe로 명시적 호출)
     var possiblePaths = [
         "C:\\Windows\\System32\\curl.exe",
         "C:\\Windows\\SysWOW64\\curl.exe",
         "C:\\Windows\\SysNative\\curl.exe",  // 32비트 앱에서 64비트 System32 접근
-        "%SystemRoot%\\System32\\curl.exe"
+        "curl.exe"  // PATH에 있는 curl.exe 직접 호출
     ];
     
     for (var i = 0; i < possiblePaths.length; i++) {
@@ -696,7 +705,7 @@ function findCurlPath() {
                 testFile.close();
                 testFile.remove();
                 
-                if (result && result.indexOf("curl") > -1) {
+                if (result && result.indexOf("curl") > -1 && result.indexOf("Release-Date") > -1) {
                     CURL_PATH = possiblePaths[i];
                     return CURL_PATH;
                 }
@@ -704,9 +713,9 @@ function findCurlPath() {
         } catch(e) {}
     }
     
-    // 3단계: PowerShell로 시도
+    // 3단계: PowerShell에서 curl.exe 직접 호출 (alias가 아닌 실제 실행파일)
     try {
-        var psCmd = 'powershell.exe -Command "curl --version" > "' + testFile.fsName + '" 2>&1';
+        var psCmd = 'powershell.exe -Command "curl.exe --version" > "' + testFile.fsName + '" 2>&1';
         app.system(psCmd);
         
         if (testFile.exists) {
@@ -715,15 +724,16 @@ function findCurlPath() {
             testFile.close();
             testFile.remove();
             
-            if (result && result.indexOf("curl") > -1) {
-                CURL_PATH = "powershell_curl";  // 특별한 플래그로 PowerShell 사용 표시
+            if (result && result.indexOf("curl") > -1 && result.indexOf("Release-Date") > -1) {
+                CURL_PATH = "curl.exe";  // PowerShell에서도 curl.exe 직접 사용
                 return CURL_PATH;
             }
         }
     } catch(e) {}
     
-    // 모두 실패하면 기본값
-    return "curl.exe";
+    // 모두 실패하면 curl.exe 직접 사용 시도
+    CURL_PATH = "curl.exe";
+    return CURL_PATH;
 }
 
 function checkCurlAvailable() {
@@ -734,12 +744,13 @@ function checkCurlAvailable() {
         if (CONFIG.IS_WINDOWS) {
             var curlPath = findCurlPath();
             
-            // PowerShell을 사용해야 하는 경우
-            if (curlPath === "powershell_curl") {
-                cmd = 'powershell.exe -Command "curl --version" > "' + testFile.fsName + '" 2>&1';
+            // Windows에서는 항상 curl.exe를 명시적으로 사용
+            if (curlPath === "curl.exe") {
+                // PATH에서 curl.exe 직접 호출
+                cmd = 'cmd.exe /c "curl.exe --version > \"' + testFile.fsName + '\" 2>&1"';
             } else {
-                // 일반 cmd 사용
-                cmd = 'cmd.exe /c "' + curlPath + ' --version" > "' + testFile.fsName + '" 2>&1';
+                // 전체 경로로 호출
+                cmd = 'cmd.exe /c "\"' + curlPath + '\" --version > \"' + testFile.fsName + '\" 2>&1"';
             }
         } else {
             cmd = 'curl --version > "' + testFile.fsName + '" 2>&1';
@@ -803,15 +814,13 @@ function executeCurl(curlArgs, outputFile) {
         // 2. outputFile 경로도 백슬래시로 변경
         var windowsOutputFile = outputFile.replace(/\//g, '\\');
         
-        // 3. PowerShell을 사용해야 하는 경우
-        if (curlPath === "powershell_curl") {
-            // PowerShell의 curl (Invoke-WebRequest alias)을 사용
-            // 참고: PowerShell의 curl은 실제 curl과 다르므로 실제 curl.exe를 호출
-            cmd = 'powershell.exe -Command "& { $ProgressPreference = \'SilentlyContinue\'; curl.exe ' + 
-                  curlArgs.replace(/"/g, '`"') + ' }" > "' + windowsOutputFile + '" 2>&1';
+        // 3. curl.exe 실행 명령 구성
+        if (curlPath === "curl.exe") {
+            // PATH에서 curl.exe 직접 호출
+            cmd = 'cmd.exe /c "curl.exe ' + curlArgs + ' > \"' + windowsOutputFile + '\" 2>&1"';
         } else {
-            // 4. 일반 cmd.exe 사용 (찾은 curl 경로 사용)
-            cmd = 'cmd.exe /c "' + curlPath + ' ' + curlArgs + ' > "' + windowsOutputFile + '" 2>&1"';
+            // 전체 경로로 curl.exe 호출 (경로에 공백이 있을 수 있으므로 따옴표로 감싸기)
+            cmd = 'cmd.exe /c "\"' + curlPath + '\" ' + curlArgs + ' > \"' + windowsOutputFile + '\" 2>&1"';
         }
         
         // CMD 창 없이 조용히 실행
